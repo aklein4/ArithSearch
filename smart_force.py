@@ -31,6 +31,10 @@ class SmartNode:
 
 
 class SmartForceInst:
+    """
+    Generates the arithmatic circuit trees for all polynomials that satisfies the given constraints.
+    All results are guarenteed to be globally optimal within the problem's assumptions.
+    """
 
     def __init__(self, constraints: np.ndarray):
         """
