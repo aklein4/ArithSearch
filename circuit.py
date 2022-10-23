@@ -1,4 +1,5 @@
 
+# pip install treelib
 from treelib import Tree as TreeTree
 import random
 
@@ -27,8 +28,11 @@ class Node:
         self.op_a = op_a # node ptr
         self.op_b = op_b # node ptr
 
+        # whether this is a leaf node
         self.is_leaf = False
 
+        # exploit associative property of add/mult to avoid repeats
+        # used by brute_force (obsolete)
         self.assocs = {}
         if not leaf:
             if self.op_a.name == self.name and not self.op_a.is_leaf:
@@ -47,10 +51,9 @@ class Node:
                 else:
                     self.assocs[self.op_b.id] = 1
 
+        # use big random number as unique ID
         self.id = random.randrange(2**62)
 
-        # self.prev_arg = None # the previous arg seen by node
-        # self.cache = None # cache of last output
 
     def change_operation(self, new_operation):
         """
@@ -104,10 +107,11 @@ class LeafNode(Node):
         :param val: None represents an arg input, otherwise is constant of value val. (Default: None)
         """
         Node.__init__(self, OPERATIONS.ADD, None, None, leaf=True)
-        # is this arg of const?
+        # is this 'x' argument or constant value?
         self.arg_based = True
         if val != None:
             self.arg_based = False
+
         # const or None
         self.val = val
         self.is_leaf = True
@@ -148,24 +152,37 @@ class LeafNode(Node):
         return 0
 
 def treequals(a, b, mem=None):
+    """
+    Caculate whether 2 trees are identical using the commutative property (obsolete)
+    :param a: Node 1
+    :param b: Node 2
+    :param mem: Memoization dict (for internal use only)
+    """
+
+    # initialize mem
     if mem == None:
         mem = {}
+    # check if this has been seen already
     if (a.id, b.id) in mem.keys():
         return mem[(a.id, b.id)]
 
+    # not the same
     if a.is_leaf != b.is_leaf:
         mem[(a.id, b.id)] = False
         return False
     
     if not a.is_leaf:
+        # different operations
         if a.name != b.name:
             mem[(a.id, b.id)] = False
             return False
+        # recursive search of children
         mem[(a.id, b.id)] = (
             (treequals(a.op_a, b.op_a, mem) and treequals(a.op_b, b.op_b, mem)) or
             (treequals(a.op_a, b.op_b, mem) and treequals(a.op_b, b.op_a, mem))
         )
         return mem[(a.id, b.id)]
 
+    # yes the same
     mem[(a.id, b.id)] = a.val == b.val
     return a.val == b.val
