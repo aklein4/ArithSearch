@@ -173,11 +173,11 @@ class SmartForceInst:
         return my_node.ind
 
     def search(self, max_depth=None, verbose=False):
-        if verbose and max_depth == None:
-            pred = 1
-            for i in range(self.constraints.shape[0]):
-                pred *= self.constraints[i]
-            print("Predicted Computation Time:", 15.3*round((pred**2)/65535), 's\n')
+        # if verbose and max_depth == None:
+        #     pred = 1
+        #     for i in range(self.constraints.shape[0]):
+        #         pred *= self.constraints[i]
+        #     print("Predicted Computation Time:", 15.3*round((pred**2)/65535), 's\n')
 
         while max_depth == None or self.curr_depth < max_depth:
             self.curr_depth += 1
@@ -301,7 +301,7 @@ class SmartForceInst:
                 ])
 
 def main():
-    inst = SmartForceInst(np.array([3, 3, 3, 3, 3, 3, 2, 1]))
+    inst = SmartForceInst(np.array([3, 3, 3, 3, 3, 3, 3, 2]))
 
     inst.search(verbose=True)
     inst.save("test.csv")
