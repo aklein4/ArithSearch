@@ -66,8 +66,6 @@ class SmartForceInst:
         self.prev_inds = set()
         self.curr_depth = 0
 
-        self.reduc = 0
-
         arg_key = self._get_arg_key()
         this_ind = self._save_node(arg_key, OPERATIONS.ADD, -1, -1, cost=0, is_leaf=True, arg=True, val=-100000)
         self.prev_inds.add(this_ind)
@@ -113,12 +111,23 @@ class SmartForceInst:
         return new_poly
 
     def _save_node(self, key, op, op_a, op_b, cost=1, is_leaf=False, arg=False, val=-100000000):
+        """
+        TODO:
+        1. Track previous dependencies to account for caching
+         - keep a set of the indexes of every subtree (including itself, excluding leaf nodes)
+         - this set for a new tree is its own index, union set_op_a, union set_op_b
+         - the cost for the new tree is the cardinality of its set
+        2. Keep track of ALL found trees for given key
+         - when an optimal tree is found, a dependency of another possiblity could change making itself smaller
+         - keep list of every possible tree that could produce a given tree
+         - find a way to prune his list to only keep 'strictly better' trees
+        """
+
         if not is_leaf:
             cost += self.ind_lib[op_a].cost + self.ind_lib[op_b].cost
 
         # not best found
-        if key in self.lib and self.lib[key].cost < cost:
-            self.reduc += 1
+        if key in self.lib and self.lib[key].cost <= cost:
             return -1
 
         # too high of polynomial
@@ -168,18 +177,21 @@ class SmartForceInst:
             pred = 1
             for i in range(self.constraints.shape[0]):
                 pred *= self.constraints[i]
-            print("Predicted Compute Rating:", round((pred**2)/65535, 2), '\n')
+            print("Predicted Computation Time:", 15.3*round((pred**2)/65535), 's\n')
 
         while max_depth == None or self.curr_depth < max_depth:
             self.curr_depth += 1
             if verbose:
-                print(" --- Depth", self.curr_depth, "---")
+                print(" --- Iteration", self.curr_depth, "---")
                 sys.stdout.write("Searching... ")
                 sys.stdout.flush()
 
             to_add_to_mat = []
             to_add_ind_offset = self.mat.shape[0]
             new_inds = set()
+
+            found = 0
+            updated = 0
 
             # iterate through all depth-1 trees
             msg = ""
@@ -207,27 +219,53 @@ class SmartForceInst:
                     kickback = self._save_node(
                         tuple(added_mat[added_ind]), OPERATIONS.ADD,
                         t_ind, added_ind
-                    ) - to_add_ind_offset
-                    if kickback >= 0 and kickback < len(to_add_to_mat):
-                        to_add_to_mat[kickback] = added_mat[added_ind]
-                    if kickback >= len(to_add_to_mat):
-                        to_add_to_mat.append(added_mat[added_ind])
-                        new_inds.add(kickback+to_add_ind_offset)
+                    ) # - to_add_ind_offset
+                    if kickback >= 0:
+                        if kickback  - to_add_ind_offset >= 0:
+                            if kickback - to_add_ind_offset < len(to_add_to_mat):
+                                to_add_to_mat[kickback - to_add_ind_offset] = added_mat[added_ind]
+                            else:
+                                to_add_to_mat.append(added_mat[added_ind])
+                                found += 1
+                        else:
+                            if kickback not in new_inds:
+                                updated += 1
+                        new_inds.add(kickback)
+                    # if kickback >= 0 and kickback < len(to_add_to_mat):
+                    #     to_add_to_mat[kickback] = added_mat[added_ind]
+                    #     new_inds.add(kickback+to_add_ind_offset)
+                    #     updated += 1
+                    # if kickback >= len(to_add_to_mat):
+                    #     to_add_to_mat.append(added_mat[added_ind])
+                    #     new_inds.add(kickback+to_add_ind_offset)
                 
                 multed_mat = np.multiply(t_key, self.mat)
                 for multed_ind in range(multed_mat.shape[0]):
                     kickback = self._save_node(
                         tuple(multed_mat[multed_ind]), OPERATIONS.MULT,
                         t_ind, multed_ind
-                    ) - to_add_ind_offset
-                    if kickback >= 0 and kickback < len(to_add_to_mat):
-                        to_add_to_mat[kickback] = multed_mat[multed_ind]
-                    if kickback >= len(to_add_to_mat):
-                        to_add_to_mat.append(multed_mat[multed_ind])
-                        new_inds.add(kickback+to_add_ind_offset)
+                    ) # - to_add_ind_offset
+                    if kickback >= 0:
+                        if kickback  - to_add_ind_offset >= 0:
+                            if kickback - to_add_ind_offset < len(to_add_to_mat):
+                                to_add_to_mat[kickback - to_add_ind_offset] = multed_mat[multed_ind]
+                            else:
+                                to_add_to_mat.append(multed_mat[multed_ind])
+                                found += 1
+                        else:
+                            if kickback not in new_inds:
+                                updated += 1
+                        new_inds.add(kickback)
+                    # if kickback >= 0 and kickback < len(to_add_to_mat):
+                    #     to_add_to_mat[kickback] = multed_mat[multed_ind]
+                    #     new_inds.add(kickback+to_add_ind_offset)
+                    # if kickback >= len(to_add_to_mat):
+                    #     to_add_to_mat.append(multed_mat[multed_ind])
+                    #     new_inds.add(kickback+to_add_ind_offset)
             
             if verbose:
-                print('\nNew Polynomials:', len(new_inds))
+                print('\nNew Polynomials:', found)
+                print('Updated Polynomials:', updated)
                 print('New Total:', len(self.lib.keys()))
                 print(' ')
 
@@ -263,7 +301,7 @@ class SmartForceInst:
                 ])
 
 def main():
-    inst = SmartForceInst(np.array([4, 4, 4, 4, 4]))
+    inst = SmartForceInst(np.array([3, 3, 3, 3, 3, 3, 2, 1]))
 
     inst.search(verbose=True)
     inst.save("test.csv")
