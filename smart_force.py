@@ -6,7 +6,9 @@ import sys
 import csv
 
 
-# constraints to satisfy when running as main``
+# constraints to satisfy when running as main
+# each v[i] represents the maximum coefficient of x^i
+# time complexity is ~ (product of all constraints)^2, assuming that v[i+1] <= v[i]
 CONSTRAINTS_TO_USE = [3, 3, 3]
 
 
