@@ -1,5 +1,4 @@
 
-from lib2to3.pytree import Leaf
 from circuit import OPERATIONS, Node, LeafNode, treequals
 
 class BruteForceInst:
