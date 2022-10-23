@@ -6,7 +6,7 @@ import sys
 import csv
 
 
-# constraints to satisfy when running as main
+# constraints to satisfy when running as main``
 CONSTRAINTS_TO_USE = [3, 3, 3]
 
 
