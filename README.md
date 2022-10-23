@@ -4,7 +4,7 @@
 A simple library for creating, running, and visualizing arithmetic circuits as trees.
 
 ## brute_force.py
-A semi-naive method of brute-forcing polynomial circuits (made obsolete by smart_force.py, though easier to understand). Modify main() for use.
+A semi-naive method of brute-forcing polynomial circuits (made obsolete by smart_force.py, but is still easier to understand). Modify main() for use.
 
 ## smart_force.py
 A much more complex version of brute-force search, running many orders of magnitude faster. Saves output to .csv file that can be read by read_lib.py. Modify constraint constant for use.
