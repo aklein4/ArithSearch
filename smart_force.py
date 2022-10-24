@@ -77,6 +77,7 @@ class SmartForceInst:
 
         # save new leaves to mat
         self.mat = np.stack(construct_keys)
+        self.const_mat = np.stack(construct_keys[1:])
 
 
     def _get_arg_key(self):
@@ -293,58 +294,68 @@ class SmartForceInst:
                     t_key = self.mat[t_ind]
 
                     # calculate keys of all trees formed by combining t_key with another known
-                    added_mat = np.add(t_key, self.mat)
-                    # iterate through all added keys
-                    # TODO: Prevent some addition pairs from being seen twice from different t_inds
-                    for added_ind in range(added_mat.shape[0]):
-                        if iterative_deepening and max(self.ind_lib[added_ind].order, self.ind_lib[t_ind].order) != desired_order:
-                            # iterative deepening skip
-                            continue
-                        # try saving this new node
-                        kickback = self._save_node(
-                            tuple(added_mat[added_ind]), OPERATIONS.ADD,
-                            t_ind, added_ind
-                        )
-                        if kickback >= 0:
-                            # key was used
-                            if kickback  - to_add_ind_offset >= 0:
-                                # this polynomial wa not known before this iteration
-                                if kickback - to_add_ind_offset < len(to_add_to_mat):
-                                    # seen before in this iteration
-                                    to_add_to_mat[kickback - to_add_ind_offset] = added_mat[added_ind]
+                    if iterative_deepening and self.ind_lib[t_ind].order != desired_order:
+                        pass
+                    else:
+                        added_mat = np.add(t_key, self.mat)
+                        # iterate through all added keys
+                        # TODO: Prevent some addition pairs from being seen twice from different t_inds
+                        for added_ind in range(added_mat.shape[0]):
+                            if iterative_deepening and max(self.ind_lib[added_ind].order, self.ind_lib[t_ind].order) != desired_order:
+                                # iterative deepening skip
+                                continue
+                            # try saving this new node
+                            kickback = self._save_node(
+                                tuple(added_mat[added_ind]), OPERATIONS.ADD,
+                                t_ind, added_ind
+                            )
+                            if kickback >= 0:
+                                # key was used
+                                if kickback  - to_add_ind_offset >= 0:
+                                    # this polynomial wa not known before this iteration
+                                    if kickback - to_add_ind_offset < len(to_add_to_mat):
+                                        # seen before in this iteration
+                                        to_add_to_mat[kickback - to_add_ind_offset] = added_mat[added_ind]
+                                    else:
+                                        # never seen before
+                                        to_add_to_mat.append(added_mat[added_ind])
+                                        found += 1
                                 else:
-                                    # never seen before
-                                    to_add_to_mat.append(added_mat[added_ind])
-                                    found += 1
-                            else:
-                                # updated old known key
-                                if kickback not in new_inds:
-                                    updated += 1
-                            # save this change for next iteration
-                            new_inds.add(kickback)
+                                    # updated old known key
+                                    if kickback not in new_inds:
+                                        updated += 1
+                                # save this change for next iteration
+                                new_inds.add(kickback)
                     
                     # same as above but with multiplication
                     # TODO: decompose this block into function called for both ADD and MULT
-                    multed_mat = np.multiply(t_key, self.mat)
-                    for multed_ind in range(multed_mat.shape[0]):
-                        if iterative_deepening and self.ind_lib[multed_ind].order + self.ind_lib[t_ind].order != desired_order:
-                            # iterative deepening skip
-                            continue
-                        kickback = self._save_node(
-                            tuple(multed_mat[multed_ind]), OPERATIONS.MULT,
-                            t_ind, multed_ind
-                        )
-                        if kickback >= 0:
-                            if kickback  - to_add_ind_offset >= 0:
-                                if kickback - to_add_ind_offset < len(to_add_to_mat):
-                                    to_add_to_mat[kickback - to_add_ind_offset] = multed_mat[multed_ind]
+                    if iterative_deepening and self.ind_lib[t_ind].order > (desired_order / 2) and self.ind_lib[t_ind].order != desired_order:
+                        pass
+                    else:
+                        multed_mat = None
+                        if self.ind_lib[t_ind].order == desired_order:
+                            multed_mat = np.multiply(t_key, self.const_mat)
+                        else:
+                            multed_mat = np.multiply(t_key, self.mat)
+                        for multed_ind in range(multed_mat.shape[0]):
+                            if iterative_deepening and self.ind_lib[multed_ind].order + self.ind_lib[t_ind].order != desired_order:
+                                # iterative deepening skip
+                                continue
+                            kickback = self._save_node(
+                                tuple(multed_mat[multed_ind]), OPERATIONS.MULT,
+                                t_ind, multed_ind
+                            )
+                            if kickback >= 0:
+                                if kickback  - to_add_ind_offset >= 0:
+                                    if kickback - to_add_ind_offset < len(to_add_to_mat):
+                                        to_add_to_mat[kickback - to_add_ind_offset] = multed_mat[multed_ind]
+                                    else:
+                                        to_add_to_mat.append(multed_mat[multed_ind])
+                                        found += 1
                                 else:
-                                    to_add_to_mat.append(multed_mat[multed_ind])
-                                    found += 1
-                            else:
-                                if kickback not in new_inds:
-                                    updated += 1
-                            new_inds.add(kickback)
+                                    if kickback not in new_inds:
+                                        updated += 1
+                                new_inds.add(kickback)
                 
                 # print info on what we found
                 if verbose:
