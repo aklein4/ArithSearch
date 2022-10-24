@@ -9,7 +9,7 @@ import csv
 # constraints to satisfy when running as main
 # each v[i] represents the maximum coefficient of x^i
 # time complexity is ~ (product of all constraints)^2, assuming that v[i+1] <= v[i]
-CONSTRAINTS_TO_USE = [3, 3, 3]
+CONSTRAINTS_TO_USE = [4, 4, 4, 4]
 
 
 @dataclass
@@ -52,7 +52,7 @@ class SmartForceInst:
         self.max_order = self.key_size-1
         # key points of polynomial at upper bound of all constraints
         self.upper_bounds = self.get_poly_key(constraints)
-        
+
         self.lib = {} # dict mapping key -> node
         # TODO: turn ind_lib to list
         self.ind_lib = {} # dict mapping index -> node
@@ -229,120 +229,135 @@ class SmartForceInst:
         return my_node.ind
 
 
-    def search(self, verbose=True):
+    def search(self, verbose=True, iterative_deepening=True):
         """
         Find optimal computation tree for all polynomials within constraints.
         :param verbode: Whether to print update messages (default: True)
         """
 
-        # iterate until there is nothing left to do and we return
-        while True:
-
-            # iteration header
-            self.curr_iteration += 1
+        the_max_order = self.max_order
+        for desired_order in range(1, the_max_order+1 if iterative_deepening else 2):
             if verbose:
-                print(" --- Iteration", self.curr_iteration, "---")
-                sys.stdout.write("Searching... ")
-                sys.stdout.flush()
+                print(" ----- ORDER", desired_order, " -----\n")
+            if iterative_deepening:
+                self.max_order = desired_order
 
-            to_add_to_mat = [] # list of keys to add to mat at end of iteration
-            to_add_ind_offset = self.mat.shape[0] # difference between to_add_to_mt index and future mat index
-            new_inds = set() # keep track of indexes that are updated this iteration
+            self.prev_inds = set()
+            for i in range(0, self.curr_ind):
+                self.prev_inds.add(i)
 
-            found = 0 # new polynomials we find
-            updated = 0 # polynomials we update
+            # iterate until there is nothing left to do and we return
+            while True:
 
-            # verbose stuff
-            msg = ""
-            place = 1
-
-            # iterate through all indexes that were changed in last iteration
-            for t_ind in self.prev_inds:
-
-                # show progress message
+                # iteration header
+                self.curr_iteration += 1
                 if verbose:
-                    if place % max(1, len(self.prev_inds)//100) == 0:
-                        erase_msg = ""
-                        for _ in range(len(msg)):
-                            erase_msg += '\b'
-                        for _ in range(len(msg)):
-                            erase_msg += ' '
-                        for _ in range(len(msg)):
-                            erase_msg += '\b'
-                        new_msg = str(place)+'/'+str(len(self.prev_inds))
-                        sys.stdout.write(erase_msg+new_msg)
-                        sys.stdout.flush()
-                        msg = new_msg
-                    place += 1
+                    print(" --- Iteration", self.curr_iteration, "---")
+                    sys.stdout.write("Searching... ")
+                    sys.stdout.flush()
 
-                # get key of current index
-                t_key = self.mat[t_ind]
+                to_add_to_mat = [] # list of keys to add to mat at end of iteration
+                to_add_ind_offset = self.mat.shape[0] # difference between to_add_to_mt index and future mat index
+                new_inds = set() # keep track of indexes that are updated this iteration
 
-                # calculate keys of all trees formed by combining t_key with another known
-                added_mat = np.add(t_key, self.mat)
-                # iterate through all added keys
-                # TODO: Prevent some addition pairs from being seen twice from different t_inds
-                for added_ind in range(added_mat.shape[0]):
-                    # try saving this new node
-                    kickback = self._save_node(
-                        tuple(added_mat[added_ind]), OPERATIONS.ADD,
-                        t_ind, added_ind
-                    )
-                    if kickback >= 0:
-                        # key was used
-                        if kickback  - to_add_ind_offset >= 0:
-                            # this polynomial wa not known before this iteration
-                            if kickback - to_add_ind_offset < len(to_add_to_mat):
-                                # seen before in this iteration
-                                to_add_to_mat[kickback - to_add_ind_offset] = added_mat[added_ind]
+                found = 0 # new polynomials we find
+                updated = 0 # polynomials we update
+
+                # verbose stuff
+                msg = ""
+                place = 1
+
+                # iterate through all indexes that were changed in last iteration
+                for t_ind in self.prev_inds:
+
+                    # show progress message
+                    if verbose:
+                        if place % max(1, len(self.prev_inds)//100) == 0:
+                            erase_msg = ""
+                            for _ in range(len(msg)):
+                                erase_msg += '\b'
+                            for _ in range(len(msg)):
+                                erase_msg += ' '
+                            for _ in range(len(msg)):
+                                erase_msg += '\b'
+                            new_msg = str(place)+'/'+str(len(self.prev_inds))
+                            sys.stdout.write(erase_msg+new_msg)
+                            sys.stdout.flush()
+                            msg = new_msg
+                        place += 1
+
+                    # get key of current index
+                    t_key = self.mat[t_ind]
+
+                    # calculate keys of all trees formed by combining t_key with another known
+                    added_mat = np.add(t_key, self.mat)
+                    # iterate through all added keys
+                    # TODO: Prevent some addition pairs from being seen twice from different t_inds
+                    for added_ind in range(added_mat.shape[0]):
+                        if iterative_deepening and max(self.ind_lib[added_ind].order, self.ind_lib[t_ind].order) != desired_order:
+                            continue
+                        # try saving this new node
+                        kickback = self._save_node(
+                            tuple(added_mat[added_ind]), OPERATIONS.ADD,
+                            t_ind, added_ind
+                        )
+                        if kickback >= 0:
+                            # key was used
+                            if kickback  - to_add_ind_offset >= 0:
+                                # this polynomial wa not known before this iteration
+                                if kickback - to_add_ind_offset < len(to_add_to_mat):
+                                    # seen before in this iteration
+                                    to_add_to_mat[kickback - to_add_ind_offset] = added_mat[added_ind]
+                                else:
+                                    # never seen before
+                                    to_add_to_mat.append(added_mat[added_ind])
+                                    found += 1
                             else:
-                                # never seen before
-                                to_add_to_mat.append(added_mat[added_ind])
-                                found += 1
-                        else:
-                            # updated old known key
-                            if kickback not in new_inds:
-                                updated += 1
-                        # save this change for next iteration
-                        new_inds.add(kickback)
-                
-                # same as above but with multiplication
-                # TODO: decompose this block into function called for both ADD and MULT
-                multed_mat = np.multiply(t_key, self.mat)
-                for multed_ind in range(multed_mat.shape[0]):
-                    kickback = self._save_node(
-                        tuple(multed_mat[multed_ind]), OPERATIONS.MULT,
-                        t_ind, multed_ind
-                    )
-                    if kickback >= 0:
-                        if kickback  - to_add_ind_offset >= 0:
-                            if kickback - to_add_ind_offset < len(to_add_to_mat):
-                                to_add_to_mat[kickback - to_add_ind_offset] = multed_mat[multed_ind]
+                                # updated old known key
+                                if kickback not in new_inds:
+                                    updated += 1
+                            # save this change for next iteration
+                            new_inds.add(kickback)
+                    
+                    # same as above but with multiplication
+                    # TODO: decompose this block into function called for both ADD and MULT
+                    multed_mat = np.multiply(t_key, self.mat)
+                    for multed_ind in range(multed_mat.shape[0]):
+                        if iterative_deepening and self.ind_lib[multed_ind].order + self.ind_lib[t_ind].order != desired_order:
+                            continue
+                        kickback = self._save_node(
+                            tuple(multed_mat[multed_ind]), OPERATIONS.MULT,
+                            t_ind, multed_ind
+                        )
+                        if kickback >= 0:
+                            if kickback  - to_add_ind_offset >= 0:
+                                if kickback - to_add_ind_offset < len(to_add_to_mat):
+                                    to_add_to_mat[kickback - to_add_ind_offset] = multed_mat[multed_ind]
+                                else:
+                                    to_add_to_mat.append(multed_mat[multed_ind])
+                                    found += 1
                             else:
-                                to_add_to_mat.append(multed_mat[multed_ind])
-                                found += 1
-                        else:
-                            if kickback not in new_inds:
-                                updated += 1
-                        new_inds.add(kickback)
-            
-            # print info on what we found
-            if verbose:
-                print('\nNew Polynomials:', found)
-                print('Updated Polynomials:', updated)
-                print('New Total:', len(self.lib.keys()))
-                print(' ')
-
-            # replace prev inds with ones from this iteration
-            self.prev_inds = new_inds
-
-            # add new keys to mat
-            if len(to_add_to_mat) > 0:
-                self.mat = np.concatenate([self.mat, np.stack(to_add_to_mat)])
+                                if kickback not in new_inds:
+                                    updated += 1
+                            new_inds.add(kickback)
                 
-            # if nothing changed, we are done
-            if len(self.prev_inds) == 0:
-                return
+                # print info on what we found
+                if verbose:
+                    print('\nNew Polynomials:', found)
+                    print('Updated Polynomials:', updated)
+                    print('New Total:', len(self.lib.keys()))
+                    print(' ')
+
+                # replace prev inds with ones from this iteration
+                self.prev_inds = new_inds
+
+                # add new keys to mat
+                if len(to_add_to_mat) > 0:
+                    self.mat = np.concatenate([self.mat, np.stack(to_add_to_mat)])
+                    
+                # if nothing changed, we are done
+                if len(self.prev_inds) == 0:
+                    break
 
 
     def size(self):
@@ -396,7 +411,7 @@ class SmartForceInst:
 
 def main():
     # init
-    inst = SmartForceInst(np.array(CONSTRAINTS_TO_USE))
+    inst = SmartForceInst(np.array(CONSTRAINTS_TO_USE), negative=True)
 
     # execute
     inst.search(verbose=True)
