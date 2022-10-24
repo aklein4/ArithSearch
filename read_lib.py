@@ -3,6 +3,7 @@ from circuit import OPERATIONS, Node, LeafNode
 import numpy as np
 import sys
 import csv
+import matplotlib.pyplot as plt
 
 class LibReader:
 
@@ -28,18 +29,28 @@ class LibReader:
                     # leaf node
                     if row[1] == 'x':
                         # argument
-                        self.library.append({'p': row[1], 'leaf': True, "val": None, "op": None, "op_a": None, "op_b": None})
+                        self.library.append({'p': row[1], 'leaf': True, "val": None, "op": None, "op_a": None, "op_b": None, "cost": int(row[5]), "order": int(row[6])})
                     else:
                         # constant
-                        self.library.append({'p': row[1], 'leaf': True, "val": int(row[1]), "op": None, "op_a": None, "op_b": None})
+                        self.library.append({'p': row[1], 'leaf': True, "val": int(row[1]), "op": None, "op_a": None, "op_b": None, "cost": int(row[5]), "order": int(row[6])})
                 else:
                     # regular node
                     self.library.append({
                         'p': row[1], 'leaf': False, "val": None,
                         "op": OPERATIONS.ADD if row[2]=="ADD" else OPERATIONS.MULT,
-                        "op_a": int(row[3]), "op_b": int(row[4])
+                        "op_a": int(row[3]), "op_b": int(row[4]), "cost": int(row[5]), "order": int(row[6])
                     })
     
+
+    def show_data(self):
+        orders = []
+        costs = []
+        for d in self.library:
+            orders.append(d["order"])
+            costs.append(d["cost"])
+        plt.scatter(orders, costs)
+        plt.show()
+
 
     def __getitem__(self, item):
         """
@@ -61,6 +72,8 @@ class LibReader:
 def main(filename):
     # read in file
     trees = LibReader(filename)
+
+    trees.show_data()
 
     # print interactively
     while True:

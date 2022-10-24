@@ -9,8 +9,11 @@ import csv
 # constraints to satisfy when running as main
 # each v[i] represents the maximum coefficient of x^i
 # time complexity is ~ (product of all constraints)^2, assuming that v[i+1] <= v[i]
-CONSTRAINTS_TO_USE = [3, 3, 3, 3, 3]
+CONSTRAINTS_TO_USE = [10, 10, 10]
 
+# data seems to suggest that costs are never greater than 2*order
+# this enforces that constraint for pruning
+ASSUME_UPPER_LIMIT = False
 
 @dataclass
 class SmartNode:
@@ -183,7 +186,7 @@ class SmartForceInst:
             if op == OPERATIONS.MULT:
                 # MULT adds orders of children
                 new_order = self.ind_lib[op_a].order + self.ind_lib[op_b].order
-        if new_order > self.max_order:
+        if new_order > self.max_order or (ASSUME_UPPER_LIMIT and cost > 2*new_order):
             # violates constraint
             return -1
         
@@ -405,7 +408,7 @@ class SmartForceInst:
         with open(filename, 'w', newline='') as csvfile:
             spamwriter = csv.writer(csvfile, dialect='excel')
             # header
-            spamwriter.writerow(['index', 'polynomial', 'operation', 'operand 1', 'operand 2'])
+            spamwriter.writerow(['index', 'polynomial', 'operation', 'operand 1', 'operand 2', 'cost', 'order'])
 
             # iterate through everything in lib
             for ind in range(self.curr_ind):
@@ -430,7 +433,8 @@ class SmartForceInst:
                     ind, p,
                     node.op.name if not node.is_leaf else "",
                     node.op_a if not node.is_leaf else "",
-                    node.op_b if not node.is_leaf else ""
+                    node.op_b if not node.is_leaf else "",
+                    node.cost, node.order
                 ])
 
 def main():
