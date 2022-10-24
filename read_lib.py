@@ -5,6 +5,7 @@ import sys
 import csv
 import matplotlib.pyplot as plt
 
+
 class LibReader:
 
     def __init__(self, filename):
@@ -16,7 +17,6 @@ class LibReader:
         # read file
         with open(filename, newline='') as csvfile:
             spamreader = csv.reader(csvfile, dialect='excel')
-
 
             header = True
             for row in spamreader:
@@ -43,12 +43,20 @@ class LibReader:
     
 
     def show_data(self):
+        """
+        Plot the order of polynomials vs their minimum found cost.
+        """
         orders = []
         costs = []
+        rats = []
         for d in self.library:
             orders.append(d["order"])
             costs.append(d["cost"])
+            rats.append(d["cost"]/max(1, d["order"]))
         plt.scatter(orders, costs)
+        plt.show()
+        plt.clf()
+        plt.hist(rats)
         plt.show()
 
 
@@ -67,6 +75,54 @@ class LibReader:
         
         # return recursive construction from children
         return Node(d["op"], self[d["op_a"]][0], self[d["op_b"]][0]), d['p']
+
+
+def compare_files(file_1, file_2):
+
+    # read file 1
+    print("reading file 1...")
+    contents_1 = {}
+    with open(file_1, newline='') as csvfile:
+        spamreader = csv.reader(csvfile, dialect='excel')
+
+        header = True
+        for row in spamreader:
+            # skip header
+            if header:
+                header = False
+                continue
+
+            # log cost
+            contents_1[row[1]] = int(row[5])
+    
+    # read file 2
+    print("reading file 2...")
+    contents_2 = {}
+    with open(file_2, newline='') as csvfile:
+        spamreader = csv.reader(csvfile, dialect='excel')
+
+        header = True
+        for row in spamreader:
+            # skip header
+            if header:
+                header = False
+                continue
+
+            # log cost
+            contents_2[row[1]] = int(row[5])
+
+    # compare the polynomials
+    one_better = 0
+    two_better = 0
+    for key in contents_1.keys():
+        if key in contents_2.keys():
+            if contents_1[key] < contents_2[key]:
+                one_better += 1
+            elif contents_1[key] < contents_2[key]:
+                two_better += 1
+    
+    print("FILE ONE BETTER:", one_better)
+    print("FILE TWO BETTER:", two_better)
 
 
 def main(filename):
@@ -93,4 +149,7 @@ def main(filename):
 if __name__ == '__main__':
     if len(sys.argv) == 1:
         raise ValueError("Please enter filename as argument.")
-    main(sys.argv[1])
+    elif len(sys.argv) == 3:
+        compare_files(sys.argv[1], sys.argv[2])
+    else:
+        main(sys.argv[1])

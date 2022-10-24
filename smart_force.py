@@ -9,11 +9,14 @@ import csv
 # constraints to satisfy when running as main
 # each v[i] represents the maximum coefficient of x^i
 # time complexity is ~ (product of all constraints)^2, assuming that v[i+1] <= v[i]
-CONSTRAINTS_TO_USE = [10, 10, 10]
+CONSTRAINTS_TO_USE = [6, 3, 3, 3, 3, 3, 3, 3]
 
 # data seems to suggest that costs are never greater than 2*order
-# this enforces that constraint for pruning
-ASSUME_UPPER_LIMIT = False
+# this enforces that constraint for pruning (this is confirmed by Horner's algorithm)
+ASSUME_UPPER_LIMIT = True
+
+# folder to save data in
+SAVE_FOLDER = "./data/"
 
 @dataclass
 class SmartNode:
@@ -80,7 +83,7 @@ class SmartForceInst:
 
         # save new leaves to mat
         self.mat = np.stack(construct_keys)
-        self.const_mat = np.stack(construct_keys[1:])
+        self.const_mat = np.stack(construct_keys)
 
 
     def _get_arg_key(self):
@@ -336,7 +339,7 @@ class SmartForceInst:
                         pass
                     else:
                         multed_mat = None
-                        if self.ind_lib[t_ind].order == desired_order:
+                        if iterative_deepening and self.ind_lib[t_ind].order == desired_order:
                             multed_mat = np.multiply(t_key, self.const_mat)
                         else:
                             multed_mat = np.multiply(t_key, self.mat)
@@ -405,7 +408,7 @@ class SmartForceInst:
             filename = filename[:-1]+".csv"
 
         # write to csv
-        with open(filename, 'w', newline='') as csvfile:
+        with open(SAVE_FOLDER+filename, 'w', newline='') as csvfile:
             spamwriter = csv.writer(csvfile, dialect='excel')
             # header
             spamwriter.writerow(['index', 'polynomial', 'operation', 'operand 1', 'operand 2', 'cost', 'order'])
