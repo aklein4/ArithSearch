@@ -9,7 +9,7 @@ import csv
 # constraints to satisfy when running as main
 # each v[i] represents the maximum coefficient of x^i
 # time complexity is ~ (product of all constraints)^2, assuming that v[i+1] <= v[i]
-CONSTRAINTS_TO_USE = [4, 4, 4, 4]
+CONSTRAINTS_TO_USE = [3, 3, 3, 3, 3]
 
 
 @dataclass
@@ -229,13 +229,16 @@ class SmartForceInst:
         return my_node.ind
 
 
-    def search(self, verbose=True, iterative_deepening=True):
+    def search(self, verbose=True, iterative_deepening=True, save_progress=False):
         """
         Find optimal computation tree for all polynomials within constraints.
         :param verbode: Whether to print update messages (default: True)
+        :param iterative_deepening: Build library with increasing order, seems to run much faster
         """
 
+
         the_max_order = self.max_order
+        # loop through iterative polynomials if iterative_deepening
         for desired_order in range(1, the_max_order+1 if iterative_deepening else 2):
             if verbose:
                 print(" ----- ORDER", desired_order, " -----\n")
@@ -272,7 +275,7 @@ class SmartForceInst:
 
                     # show progress message
                     if verbose:
-                        if place % max(1, len(self.prev_inds)//100) == 0:
+                        if place % max(10, len(self.prev_inds)//100) == 0:
                             erase_msg = ""
                             for _ in range(len(msg)):
                                 erase_msg += '\b'
@@ -295,6 +298,7 @@ class SmartForceInst:
                     # TODO: Prevent some addition pairs from being seen twice from different t_inds
                     for added_ind in range(added_mat.shape[0]):
                         if iterative_deepening and max(self.ind_lib[added_ind].order, self.ind_lib[t_ind].order) != desired_order:
+                            # iterative deepening skip
                             continue
                         # try saving this new node
                         kickback = self._save_node(
@@ -324,6 +328,7 @@ class SmartForceInst:
                     multed_mat = np.multiply(t_key, self.mat)
                     for multed_ind in range(multed_mat.shape[0]):
                         if iterative_deepening and self.ind_lib[multed_ind].order + self.ind_lib[t_ind].order != desired_order:
+                            # iterative deepening skip
                             continue
                         kickback = self._save_node(
                             tuple(multed_mat[multed_ind]), OPERATIONS.MULT,
@@ -358,6 +363,14 @@ class SmartForceInst:
                 # if nothing changed, we are done
                 if len(self.prev_inds) == 0:
                     break
+            
+            if save_progress:
+                if verbose:
+                    sys.stdout.write("Saving... ")
+                    sys.stdout.flush()
+                self.save()
+                if verbose:
+                    sys.stdout.write("done. \n\n")
 
 
     def size(self):
@@ -373,7 +386,7 @@ class SmartForceInst:
         # make filename
         if filename == None:
             filename = ""
-            for i in range(self.constraints.shape[0]):
+            for i in range(self.max_order + 1):
                 filename += str(self.constraints[i]) + "-"
             filename = filename[:-1]+".csv"
 
@@ -411,10 +424,10 @@ class SmartForceInst:
 
 def main():
     # init
-    inst = SmartForceInst(np.array(CONSTRAINTS_TO_USE), negative=True)
+    inst = SmartForceInst(np.array(CONSTRAINTS_TO_USE))
 
     # execute
-    inst.search(verbose=True)
+    inst.search(verbose=True, iterative_deepening=True, save_progress=True)
     inst.save()
 
     print(" --- Program Complete! ---\n")
