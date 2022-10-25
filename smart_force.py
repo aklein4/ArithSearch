@@ -68,22 +68,19 @@ class SmartForceInst:
         self.prev_inds = set() # set of indexes that were modified in previous step
         self.curr_iteration = 0 # current iteration of search
 
+        self.bins = {}
+
         # insert argument leaf
         arg_key = self._get_arg_key()
-        this_ind = self._save_node(arg_key, OPERATIONS.ADD, -1, -1, cost=0, is_leaf=True, arg=True, val=-100000)
+        this_ind, delta = self._save_node(arg_key, OPERATIONS.ADD, -1, -1, cost=0, is_leaf=True, arg=True, val=-100000)
         self.prev_inds.add(this_ind)
+        self.put_in_bin(this_ind, 0)
 
-        # insert constant leaves up to max constraint
-        construct_keys = [np.array(arg_key)]
         for n in range(1, max(constraints)+1):
             n_key = self._get_const_key(n)
-            construct_keys.append(np.array(n_key))
-            this_ind = self._save_node(n_key, OPERATIONS.ADD, -1, -1, cost=0, is_leaf=True, arg=False, val=n)
+            this_ind, delta = self._save_node(n_key, OPERATIONS.ADD, -1, -1, cost=0, is_leaf=True, arg=False, val=n)
             self.prev_inds.add(this_ind)
-
-        # save new leaves to mat
-        self.mat = np.stack(construct_keys)
-        self.const_mat = np.stack(construct_keys)
+            self.put_in_bin(this_ind, 0)
 
 
     def _get_arg_key(self):
@@ -98,6 +95,14 @@ class SmartForceInst:
     def get_poly_key(self, poly):
         # get key of polynomial described by coefficients
         return tuple([sum([poly[i]*(x**i) for i in range(poly.shape[0])]) for x in range(self.key_size)])
+
+
+    def put_in_bin(self, ind, new_cost, old_cost=None):
+        if old_cost != None:
+            self.bins[old_cost].remove(ind)
+        if new_cost not in self.bins.keys():
+            self.bins[new_cost] = set()
+        self.bins[new_cost].add(ind)
 
 
     def smart2tree(self, smart: SmartNode):
@@ -172,7 +177,10 @@ class SmartForceInst:
 
         # seen this key before, and this is not better than that one
         if key in self.lib and self.lib[key].cost <= cost:
-            return -1
+            return -1, 0
+        old_cost = None
+        if key in self.lib:
+            old_cost = self.lib[key].cost
 
         # check if the order of this node violates constraints
         new_order = 0
@@ -191,13 +199,13 @@ class SmartForceInst:
                 new_order = self.ind_lib[op_a].order + self.ind_lib[op_b].order
         if new_order > self.max_order or (ASSUME_UPPER_LIMIT and cost > 2*new_order):
             # violates constraint
-            return -1
+            return -1, 0
         
         # check key point restraints
         for i in range(len(self.upper_bounds)):
             if key[i] > self.upper_bounds[i]:
                 # violates constraint
-                return -1
+                return -1, 0
 
         # check coefficient constraints
         new_poly = np.zeros([self.key_size])
@@ -214,7 +222,7 @@ class SmartForceInst:
         for i in range(new_poly.shape[0]):
             if new_poly[i] > self.constraints[i]:
                 # violates constraint
-                return -1
+                return -1, 0
 
         # create new node
         my_node = SmartNode(np.array(key), new_poly, op, cost, is_leaf, arg, val, op_a, op_b, -1, new_order)
@@ -233,7 +241,7 @@ class SmartForceInst:
         self.lib[key] = my_node
 
         # return updated index
-        return my_node.ind
+        return my_node.ind, cost-old_cost if old_cost != None else None
 
 
     def search(self, verbose=True, iterative_deepening=True, save_progress=False):
@@ -252,6 +260,7 @@ class SmartForceInst:
             if iterative_deepening:
                 self.max_order = desired_order
 
+            # put all previous polynomials into the set to try
             self.prev_inds = set()
             for i in range(0, self.curr_ind):
                 self.prev_inds.add(i)
@@ -266,8 +275,9 @@ class SmartForceInst:
                     sys.stdout.write("Searching... ")
                     sys.stdout.flush()
 
-                to_add_to_mat = [] # list of keys to add to mat at end of iteration
-                to_add_ind_offset = self.mat.shape[0] # difference between to_add_to_mt index and future mat index
+                created_inds = {} # list of keys to add to mat at end of iteration
+                replaced_inds = {}
+                to_add_ind_offset = self.curr_ind # difference between to_add_to_mt index and future mat index
                 new_inds = set() # keep track of indexes that are updated this iteration
 
                 found = 0 # new polynomials we find
@@ -297,71 +307,83 @@ class SmartForceInst:
                         place += 1
 
                     # get key of current index
-                    t_key = self.mat[t_ind]
+                    t_key = self.ind_lib[t_ind].key
 
                     # calculate keys of all trees formed by combining t_key with another known
                     if iterative_deepening and self.ind_lib[t_ind].order != desired_order:
                         pass
                     else:
-                        added_mat = np.add(t_key, self.mat)
                         # iterate through all added keys
                         # TODO: Prevent some addition pairs from being seen twice from different t_inds
-                        for added_ind in range(added_mat.shape[0]):
-                            if iterative_deepening and max(self.ind_lib[added_ind].order, self.ind_lib[t_ind].order) != desired_order:
-                                # iterative deepening skip
-                                continue
-                            # try saving this new node
-                            kickback = self._save_node(
-                                tuple(added_mat[added_ind]), OPERATIONS.ADD,
-                                t_ind, added_ind
-                            )
-                            if kickback >= 0:
-                                # key was used
-                                if kickback  - to_add_ind_offset >= 0:
-                                    # this polynomial wa not known before this iteration
-                                    if kickback - to_add_ind_offset < len(to_add_to_mat):
-                                        # seen before in this iteration
-                                        to_add_to_mat[kickback - to_add_ind_offset] = added_mat[added_ind]
+                        for other_cost in range(0, (2*desired_order)-self.ind_lib[t_ind].cost):
+                            for added_ind in self.bins.get(other_cost, []):
+                                added_mat = np.add(np.array(t_key), np.array(self.ind_lib[added_ind].key))
+                                if iterative_deepening and max(self.ind_lib[added_ind].order, self.ind_lib[t_ind].order) != desired_order:
+                                    # iterative deepening skip
+                                    continue
+                                # try saving this new node
+                                kickback, delta = self._save_node(
+                                    tuple(added_mat), OPERATIONS.ADD,
+                                    t_ind, added_ind
+                                )
+                                if kickback >= 0:
+                                    # key was used
+                                    if kickback  - to_add_ind_offset >= 0:
+                                        # this polynomial was not known before this iteration
+                                        if kickback in created_inds.keys():
+                                            # seen before in this iteration
+                                            created_inds[kickback] = 1+self.ind_lib[t_ind].cost+other_cost
+                                        else:
+                                            # never seen before
+                                            created_inds[kickback] = 1+self.ind_lib[t_ind].cost+other_cost
+                                            found += 1
                                     else:
-                                        # never seen before
-                                        to_add_to_mat.append(added_mat[added_ind])
-                                        found += 1
-                                else:
-                                    # updated old known key
-                                    if kickback not in new_inds:
-                                        updated += 1
-                                # save this change for next iteration
-                                new_inds.add(kickback)
+                                        if kickback in replaced_inds.keys():
+                                            # seen before in this iteration
+                                            replaced_inds[kickback][0] = 1+self.ind_lib[t_ind].cost+other_cost
+                                        else:
+                                            # never seen before
+                                            created_inds[kickback] = (1+self.ind_lib[t_ind].cost+other_cost, 1+self.ind_lib[t_ind].cost+other_cost - delta)
+                                            updated += 1
+                                    # save this change for next iteration
+                                    new_inds.add(kickback)
                     
                     # same as above but with multiplication
                     # TODO: decompose this block into function called for both ADD and MULT
                     if iterative_deepening and self.ind_lib[t_ind].order > (desired_order / 2) and self.ind_lib[t_ind].order != desired_order:
                         pass
                     else:
-                        multed_mat = None
-                        if iterative_deepening and self.ind_lib[t_ind].order == desired_order:
-                            multed_mat = np.multiply(t_key, self.const_mat)
-                        else:
-                            multed_mat = np.multiply(t_key, self.mat)
-                        for multed_ind in range(multed_mat.shape[0]):
-                            if iterative_deepening and self.ind_lib[multed_ind].order + self.ind_lib[t_ind].order != desired_order:
-                                # iterative deepening skip
-                                continue
-                            kickback = self._save_node(
-                                tuple(multed_mat[multed_ind]), OPERATIONS.MULT,
-                                t_ind, multed_ind
-                            )
-                            if kickback >= 0:
-                                if kickback  - to_add_ind_offset >= 0:
-                                    if kickback - to_add_ind_offset < len(to_add_to_mat):
-                                        to_add_to_mat[kickback - to_add_ind_offset] = multed_mat[multed_ind]
+                        for other_cost in range(0, (2*desired_order)-self.ind_lib[t_ind].cost):
+                            for multed_ind in self.bins.get(other_cost, []):
+                                if iterative_deepening and self.ind_lib[multed_ind].order + self.ind_lib[t_ind].order != desired_order:
+                                    # iterative deepening skip
+                                    continue
+                                multed_mat = np.multiply(np.array(t_key), np.array(self.ind_lib[multed_ind].key))
+                                kickback, delta = self._save_node(
+                                    tuple(multed_mat), OPERATIONS.MULT,
+                                    t_ind, multed_ind
+                                )
+                                if kickback >= 0:
+                                    # key was used
+                                    if kickback  - to_add_ind_offset >= 0:
+                                        # this polynomial was not known before this iteration
+                                        if kickback in created_inds.keys():
+                                            # seen before in this iteration
+                                            created_inds[kickback] = 1+self.ind_lib[t_ind].cost+other_cost
+                                        else:
+                                            # never seen before
+                                            created_inds[kickback] = 1+self.ind_lib[t_ind].cost+other_cost
+                                            found += 1
                                     else:
-                                        to_add_to_mat.append(multed_mat[multed_ind])
-                                        found += 1
-                                else:
-                                    if kickback not in new_inds:
-                                        updated += 1
-                                new_inds.add(kickback)
+                                        if kickback in replaced_inds.keys():
+                                            # seen before in this iteration
+                                            replaced_inds[kickback][0] = 1+self.ind_lib[t_ind].cost+other_cost
+                                        else:
+                                            # never seen before
+                                            created_inds[kickback] = (1+self.ind_lib[t_ind].cost+other_cost, 1+self.ind_lib[t_ind].cost+other_cost - delta)
+                                            updated += 1
+                                    # save this change for next iteration
+                                    new_inds.add(kickback)
                 
                 # print info on what we found
                 if verbose:
@@ -371,11 +393,16 @@ class SmartForceInst:
                     print(' ')
 
                 # replace prev inds with ones from this iteration
-                self.prev_inds = new_inds
+                self.prev_inds = set()
+                for ind in new_inds:
+                    if self.ind_lib[ind].cost <= (2*desired_order)-1:
+                        self.prev_inds.add(ind)
 
                 # add new keys to mat
-                if len(to_add_to_mat) > 0:
-                    self.mat = np.concatenate([self.mat, np.stack(to_add_to_mat)])
+                for ind in created_inds.keys():
+                    self.put_in_bin(ind, created_inds[ind])
+                for ind in replaced_inds.keys():
+                    self.put_in_bin(ind, replaced_inds[ind][0], replaced_inds[ind][1])
                     
                 # if nothing changed, we are done
                 if len(self.prev_inds) == 0:
@@ -446,13 +473,13 @@ def main():
 
     # execute
     start_time = time.time()
-    inst.search(verbose=True, iterative_deepening=True, save_progress=True)
+    inst.search(verbose=True, iterative_deepening=True, save_progress=False)
     print(" --- Search Complete! (" + str(round(time.time()-start_time, 1)) + " s) ---\n")
 
     # save final output
     sys.stdout.write("Saving... ")
     sys.stdout.flush()
-    inst.save()
+    inst.save("test.csv")
     print("done.")
 
 if __name__ == '__main__':

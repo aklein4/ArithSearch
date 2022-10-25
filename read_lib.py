@@ -4,7 +4,7 @@ import numpy as np
 import sys
 import csv
 import matplotlib.pyplot as plt
-
+from collections import Counter
 
 class LibReader:
 
@@ -52,11 +52,27 @@ class LibReader:
         for d in self.library:
             orders.append(d["order"])
             costs.append(d["cost"])
-            rats.append(d["cost"]/max(1, d["order"]))
+            rats.append(d["cost"])
+
+        # count the occurrences of each point
+        # c = Counter(zip(orders, costs))
+        # # create a list of the sizes, here multiplied by 10 for scale
+        # s = [round(np.log2(c[(xx,yy)]**3)) for xx,yy in zip(orders, costs)]
+
         plt.scatter(orders, costs)
-        plt.show()
+        #plt.show()
         plt.clf()
-        plt.hist(rats)
+        vals, bins, cont = plt.hist(rats, bins=[x for x in range(0, 15)])
+        tot_combs = 0
+        taken_combs = 0
+        for i in range(0, len(vals)):
+            for j in range(0, i+1):
+                tot_combs += vals[i]*vals[j]
+                if i+j+1 <= 14:
+                    taken_combs += vals[i]*vals[j]
+        print("total:", tot_combs, "- taken:", taken_combs, "perc:", taken_combs/tot_combs)
+        print()
+        print(vals)
         plt.show()
 
 
