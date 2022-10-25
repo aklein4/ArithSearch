@@ -9,7 +9,7 @@ import time
 # constraints to satisfy when running as main
 # each v[i] represents the maximum coefficient of x^i
 # time complexity is ~ (product of all constraints)^2, assuming that v[i+1] <= v[i]
-CONSTRAINTS_TO_USE = [6, 3, 3, 3, 3, 3, 3, 3]
+CONSTRAINTS_TO_USE = [9, 9, 9, 9, 9]
 
 # data seems to suggest that costs are never greater than 2*order
 # this enforces that constraint for pruning (this is confirmed by Horner's algorithm)
@@ -251,7 +251,6 @@ class SmartForceInst:
         :param iterative_deepening: Build library with increasing order, seems to run much faster
         """
 
-
         the_max_order = self.max_order
         # loop through iterative polynomials if iterative_deepening
         for desired_order in range(1, the_max_order+1 if iterative_deepening else 2):
@@ -286,13 +285,16 @@ class SmartForceInst:
                 # verbose stuff
                 msg = ""
                 place = 1
+                last_time = time.time_ns()
 
                 # iterate through all indexes that were changed in last iteration
                 for t_ind in self.prev_inds:
 
                     # show progress message
                     if verbose:
-                        if place % max(10, len(self.prev_inds)//100) == 0:
+                        new_time = time.time_ns()
+                        if place == 1 or (new_time-last_time)*1e-9 >= 0.25:
+                            last_time = new_time
                             erase_msg = ""
                             for _ in range(len(msg)):
                                 erase_msg += '\b'
@@ -479,7 +481,7 @@ def main():
     # save final output
     sys.stdout.write("Saving... ")
     sys.stdout.flush()
-    inst.save("test.csv")
+    inst.save()
     print("done.")
 
 if __name__ == '__main__':

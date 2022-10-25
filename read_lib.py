@@ -4,7 +4,6 @@ import numpy as np
 import sys
 import csv
 import matplotlib.pyplot as plt
-from collections import Counter
 
 class LibReader:
 
@@ -54,15 +53,10 @@ class LibReader:
             costs.append(d["cost"])
             rats.append(d["cost"])
 
-        # count the occurrences of each point
-        # c = Counter(zip(orders, costs))
-        # # create a list of the sizes, here multiplied by 10 for scale
-        # s = [round(np.log2(c[(xx,yy)]**3)) for xx,yy in zip(orders, costs)]
-
-        plt.scatter(orders, costs)
+        #plt.scatter(orders, costs)
         #plt.show()
-        plt.clf()
-        vals, bins, cont = plt.hist(rats, bins=[x for x in range(0, 15)])
+        #plt.clf()
+        vals, bins, cont = plt.hist(rats, bins=[x for x in range(0, 21)])
         tot_combs = 0
         taken_combs = 0
         for i in range(0, len(vals)):
@@ -70,9 +64,7 @@ class LibReader:
                 tot_combs += vals[i]*vals[j]
                 if i+j+1 <= 14:
                     taken_combs += vals[i]*vals[j]
-        print("total:", tot_combs, "- taken:", taken_combs, "perc:", taken_combs/tot_combs)
-        print()
-        print(vals)
+        print("total:", tot_combs, "- taken:", taken_combs, "- perc:", taken_combs/tot_combs)
         plt.show()
 
 
@@ -143,7 +135,9 @@ def compare_files(file_1, file_2):
 
 def main(filename):
     # read in file
+    print("reading file... ")
     trees = LibReader(filename)
+    print("done.")
 
     trees.show_data()
 
