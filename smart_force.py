@@ -4,7 +4,7 @@ from circuit import OPERATIONS, Node, LeafNode, OpInfo, treequals
 import numpy as np
 import sys
 import csv
-
+import time
 
 # constraints to satisfy when running as main
 # each v[i] represents the maximum coefficient of x^i
@@ -445,10 +445,15 @@ def main():
     inst = SmartForceInst(np.array(CONSTRAINTS_TO_USE))
 
     # execute
+    start_time = time.time()
     inst.search(verbose=True, iterative_deepening=True, save_progress=True)
-    inst.save()
+    print(" --- Search Complete! (" + str(round(time.time()-start_time, 1)) + " s) ---\n")
 
-    print(" --- Program Complete! ---\n")
+    # save final output
+    sys.stdout.write("Saving... ")
+    sys.stdout.flush()
+    inst.save()
+    print("done.")
 
 if __name__ == '__main__':
     main()
