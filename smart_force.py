@@ -9,7 +9,7 @@ import time
 # constraints to satisfy when running as main
 # each v[i] represents the maximum coefficient of x^i
 # time complexity is ~ (product of all constraints)^2, assuming that v[i+1] <= v[i]
-CONSTRAINTS_TO_USE = [9, 9, 9, 9, 9]
+CONSTRAINTS_TO_USE = [9, 9, 9, 9, 9, 9]
 
 # data seems to suggest that costs are never greater than 2*order
 # this enforces that constraint for pruning (this is confirmed by Horner's algorithm)
@@ -34,6 +34,7 @@ class SmartNode:
     op_b: int # index of operand b
     ind: int # index of self
     order: int # order of self's polynomial
+    depth: int
 
 
 class SmartForceInst:
@@ -44,7 +45,7 @@ class SmartForceInst:
      - strictly tree-shaped circuits without cross-chaching
     """
 
-    def __init__(self, constraints: np.ndarray):
+    def __init__(self, constraints: np.ndarray, check_depth=False):
         """
         :param constraints: numpy vector with v_i representing max coefficient of x^i (coefficients beyong length assumed to be zero)
         """
@@ -69,6 +70,7 @@ class SmartForceInst:
         self.curr_iteration = 0 # current iteration of search
 
         self.bins = {}
+        self.check_depth = check_depth
 
         # insert argument leaf
         arg_key = self._get_arg_key()
@@ -98,6 +100,8 @@ class SmartForceInst:
 
 
     def put_in_bin(self, ind, new_cost, old_cost=None):
+        if new_cost == old_cost:
+            return
         if old_cost != None:
             self.bins[old_cost].remove(ind)
         if new_cost not in self.bins.keys():
@@ -175,9 +179,20 @@ class SmartForceInst:
         if not is_leaf:
             cost += self.ind_lib[op_a].cost + self.ind_lib[op_b].cost
 
+        new_depth = 0
+        if not is_leaf:
+            new_depth = 1+max(self.ind_lib[op_a].depth, self.ind_lib[op_b].depth)
+
         # seen this key before, and this is not better than that one
-        if key in self.lib and self.lib[key].cost <= cost:
+        if key in self.lib and self.lib[key].cost < cost:
             return -1, 0
+        if key in self.lib and self.lib[key].cost == cost:
+            if self.check_depth and new_depth < self.lib[key].depth:
+                pass
+            else:
+                return -1, 0
+
+
         old_cost = None
         if key in self.lib:
             old_cost = self.lib[key].cost
@@ -225,7 +240,7 @@ class SmartForceInst:
                 return -1, 0
 
         # create new node
-        my_node = SmartNode(np.array(key), new_poly, op, cost, is_leaf, arg, val, op_a, op_b, -1, new_order)
+        my_node = SmartNode(np.array(key), new_poly, op, cost, is_leaf, arg, val, op_a, op_b, -1, new_order, new_depth)
 
         if key in self.lib:
             # replace in libs
@@ -440,7 +455,7 @@ class SmartForceInst:
         with open(SAVE_FOLDER+filename, 'w', newline='') as csvfile:
             spamwriter = csv.writer(csvfile, dialect='excel')
             # header
-            spamwriter.writerow(['index', 'polynomial', 'operation', 'operand 1', 'operand 2', 'cost', 'order'])
+            spamwriter.writerow(['index', 'polynomial', 'operation', 'operand 1', 'operand 2', 'cost', 'order', 'depth'])
 
             # iterate through everything in lib
             for ind in range(self.curr_ind):
@@ -466,12 +481,12 @@ class SmartForceInst:
                     node.op.name if not node.is_leaf else "",
                     node.op_a if not node.is_leaf else "",
                     node.op_b if not node.is_leaf else "",
-                    node.cost, node.order
+                    node.cost, node.order, node.depth
                 ])
 
 def main():
     # init
-    inst = SmartForceInst(np.array(CONSTRAINTS_TO_USE))
+    inst = SmartForceInst(np.array(CONSTRAINTS_TO_USE), check_depth=True)
 
     # execute
     start_time = time.time()
@@ -481,7 +496,7 @@ def main():
     # save final output
     sys.stdout.write("Saving... ")
     sys.stdout.flush()
-    inst.save()
+    inst.save("depth.csv")
     print("done.")
 
 if __name__ == '__main__':

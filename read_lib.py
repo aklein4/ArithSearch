@@ -28,16 +28,22 @@ class LibReader:
                     # leaf node
                     if row[1] == 'x':
                         # argument
-                        self.library.append({'p': row[1], 'leaf': True, "val": None, "op": None, "op_a": None, "op_b": None, "cost": int(row[5]), "order": int(row[6])})
+                        self.library.append({
+                            'p': row[1], 'leaf': True, "val": None,
+                            "op": None, "op_a": None, "op_b": None, "cost": int(row[5]), "order": int(row[6]), "depth": int(row[7]) if len(row)>7 else 0
+                        })
                     else:
                         # constant
-                        self.library.append({'p': row[1], 'leaf': True, "val": int(row[1]), "op": None, "op_a": None, "op_b": None, "cost": int(row[5]), "order": int(row[6])})
+                        self.library.append({
+                            'p': row[1], 'leaf': True, "val": int(row[1]),
+                            "op": None, "op_a": None, "op_b": None, "cost": int(row[5]), "order": int(row[6]), "depth": int(row[7]) if len(row)>7 else 0
+                        })
                 else:
                     # regular node
                     self.library.append({
                         'p': row[1], 'leaf': False, "val": None,
                         "op": OPERATIONS.ADD if row[2]=="ADD" else OPERATIONS.MULT,
-                        "op_a": int(row[3]), "op_b": int(row[4]), "cost": int(row[5]), "order": int(row[6])
+                        "op_a": int(row[3]), "op_b": int(row[4]), "cost": int(row[5]), "order": int(row[6]), "depth": int(row[7]) if len(row)>7 else 0
                     })
     
 
@@ -47,24 +53,26 @@ class LibReader:
         """
         orders = []
         costs = []
-        rats = []
+        depths = []
         for d in self.library:
             orders.append(d["order"])
             costs.append(d["cost"])
-            rats.append(d["cost"])
+            depths.append(d["depth"])
 
         #plt.scatter(orders, costs)
         #plt.show()
         #plt.clf()
-        vals, bins, cont = plt.hist(rats, bins=[x for x in range(0, 21)])
-        tot_combs = 0
-        taken_combs = 0
-        for i in range(0, len(vals)):
-            for j in range(0, i+1):
-                tot_combs += vals[i]*vals[j]
-                if i+j+1 <= 14:
-                    taken_combs += vals[i]*vals[j]
-        print("total:", tot_combs, "- taken:", taken_combs, "- perc:", taken_combs/tot_combs)
+        vals, bins, cont = plt.hist(depths, bins=[x-0.5 for x in range(0, 21)])
+        plt.clf()
+        plt.plot(vals)
+        # tot_combs = 0
+        # taken_combs = 0
+        # for i in range(0, len(vals)):
+        #     for j in range(0, i+1):
+        #         tot_combs += vals[i]*vals[j]
+        #         if i+j+1 <= 14:
+        #             taken_combs += vals[i]*vals[j]
+        # print("total:", tot_combs, "- taken:", taken_combs, "- perc:", taken_combs/tot_combs)
         plt.show()
 
 
@@ -90,6 +98,7 @@ def compare_files(file_1, file_2):
     # read file 1
     print("reading file 1...")
     contents_1 = {}
+    depths_1 = {}
     with open(file_1, newline='') as csvfile:
         spamreader = csv.reader(csvfile, dialect='excel')
 
@@ -102,10 +111,13 @@ def compare_files(file_1, file_2):
 
             # log cost
             contents_1[row[1]] = int(row[5])
+            if len(row) > 7:
+                depths_1[row[1]] = int(row[7])
     
     # read file 2
     print("reading file 2...")
     contents_2 = {}
+    depths_2 = {}
     with open(file_2, newline='') as csvfile:
         spamreader = csv.reader(csvfile, dialect='excel')
 
@@ -118,19 +130,37 @@ def compare_files(file_1, file_2):
 
             # log cost
             contents_2[row[1]] = int(row[5])
+            if len(row) > 7:
+                depths_2[row[1]] = int(row[7])
+
+    if len(depths_1.keys()) == 0 or len(depths_2.keys()) == 0:
+        print("Warning: no depths found")
 
     # compare the polynomials
     one_better = 0
     two_better = 0
+    shared_nomials = 0
     for key in contents_1.keys():
         if key in contents_2.keys():
+            shared_nomials += 1
             if contents_1[key] < contents_2[key]:
                 one_better += 1
             elif contents_1[key] < contents_2[key]:
                 two_better += 1
-    
-    print("FILE ONE BETTER:", one_better)
-    print("FILE TWO BETTER:", two_better)
+    print("SHARED POLYNOMIALS:", shared_nomials)
+    print("FILE ONE COST LESS:", one_better)
+    print("FILE TWO COST LESS:", two_better)
+
+    one_depth_better = 0
+    two_depth_better = 0
+    for key in depths_1.keys():
+        if key in depths_2.keys():
+            if depths_1[key] < depths_2[key]:
+                one_depth_better += 1
+            elif depths_1[key] < depths_2[key]:
+                two_depth_better += 1
+    print("FILE ONE DEPTH LESS:", one_depth_better)
+    print("FILE TWO DEPTH LESS:", two_depth_better)
 
 
 def main(filename):
