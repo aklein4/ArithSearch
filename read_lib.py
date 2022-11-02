@@ -108,12 +108,13 @@ def compare_files(file_1, file_2):
             if header:
                 header = False
                 continue
-
+            
             # log cost
             contents_1[row[1]] = int(row[5])
             if len(row) > 7:
+                depth = int(row[7])
                 depths_1[row[1]] = int(row[7])
-    
+
     # read file 2
     print("reading file 2...")
     contents_2 = {}
@@ -140,28 +141,46 @@ def compare_files(file_1, file_2):
     one_better = 0
     two_better = 0
     shared_nomials = 0
+    example_poly = None
     for key in contents_1.keys():
         if key in contents_2.keys():
             shared_nomials += 1
             if contents_1[key] < contents_2[key]:
                 one_better += 1
-            elif contents_1[key] < contents_2[key]:
+                if example_poly == None:
+                    example_poly = key
+            elif contents_1[key] > contents_2[key]:
                 two_better += 1
+                if example_poly == None:
+                    example_poly = key
     print("SHARED POLYNOMIALS:", shared_nomials)
     print("FILE ONE COST LESS:", one_better)
     print("FILE TWO COST LESS:", two_better)
 
+    if example_poly != None:
+        print(" - Example with Different Costs:", example_poly)
+
     one_depth_better = 0
     two_depth_better = 0
+    example_poly = None
+    tester = None
     for key in depths_1.keys():
         if key in depths_2.keys():
             if depths_1[key] < depths_2[key]:
                 one_depth_better += 1
-            elif depths_1[key] < depths_2[key]:
+                if example_poly == None:
+                    example_poly = key
+                    tester = [depths_1[key], depths_2[key]]
+            elif depths_1[key] > depths_2[key]:
                 two_depth_better += 1
+                if example_poly == None:
+                    example_poly = key
+                    tester = [depths_1[key], depths_2[key]]
     print("FILE ONE DEPTH LESS:", one_depth_better)
     print("FILE TWO DEPTH LESS:", two_depth_better)
 
+    if example_poly != None:
+        print(" - Example with Different Depths:", example_poly)
 
 def main(filename):
     # read in file
