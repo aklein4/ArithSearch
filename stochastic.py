@@ -3,6 +3,10 @@ import numpy as np
 import numpy.polynomial as poly
 from sklearn.metrics import mean_squared_error
 
+"""
+Framework for potential stochastic search algorithm.
+"""
+
 def poly_MSE(a_poly, b_poly):
     """
     Mean squared error between the coefficients of poly.Polynomials.
