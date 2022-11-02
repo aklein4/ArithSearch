@@ -40,11 +40,12 @@ def n(c, mem=None):
 def main():
 
     print("\nCost of tree -> Number of Tree Shapes -> Number of Trees With 2 Operations \n")
-    for i in range(1, 20):
+    for i in range(1, 21):
+        num = n(i)
         try:
-            print(i, "->", n(i), "->", '{:.5E}'.format(2**(n(i))))
+            print(i, "->", num, "->", '{:.5E}'.format(2**(num)))
         except:
-            print(i, "->", n(i), "->", "inf")
+            print(i, "->", num, "->", "inf")
     print('')
 
 if __name__ == "__main__":
