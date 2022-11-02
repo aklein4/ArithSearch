@@ -9,11 +9,15 @@ import time
 # constraints to satisfy when running as main
 # each v[i] represents the maximum coefficient of x^i
 # time complexity is ~ (product of all constraints)^2, assuming that v[i+1] <= v[i]
-CONSTRAINTS_TO_USE = [9, 9, 9, 9, 9, 9]
+CONSTRAINTS_TO_USE = [9, 9, 9, 9]
 
 # data seems to suggest that costs are never greater than 2*order
 # this enforces that constraint for pruning (this is confirmed by Horner's algorithm)
 ASSUME_UPPER_LIMIT = True
+
+# whether or to remove certain optimizations that may not work with negative numbers
+# evidence suggests that these optimizations should still work, however
+SAFE_NEGATIVE = True
 
 # folder to save data in
 SAVE_FOLDER = "./data/"
@@ -45,10 +49,12 @@ class SmartForceInst:
      - strictly tree-shaped circuits without cross-chaching
     """
 
-    def __init__(self, constraints: np.ndarray, check_depth=False):
+    def __init__(self, constraints: np.ndarray, check_depth=False, allow_negative=False):
         """
         :param constraints: numpy vector with v_i representing max coefficient of x^i (coefficients beyong length assumed to be zero)
         """
+        self.allow_negative = allow_negative
+
         # reconfigure constraints to match internal use
         self.constraints = np.zeros_like(constraints)
         for i in range(self.constraints.shape[0]):
@@ -79,10 +85,11 @@ class SmartForceInst:
         self.put_in_bin(this_ind, 0)
 
         for n in range(1, max(constraints)+1):
-            n_key = self._get_const_key(n)
-            this_ind, delta = self._save_node(n_key, OPERATIONS.ADD, -1, -1, cost=0, is_leaf=True, arg=False, val=n)
-            self.prev_inds.add(this_ind)
-            self.put_in_bin(this_ind, 0)
+            for sign in ([-1, 1] if allow_negative else [1]):
+                n_key = self._get_const_key(n*sign)
+                this_ind, delta = self._save_node(n_key, OPERATIONS.ADD, -1, -1, cost=0, is_leaf=True, arg=False, val=n*sign)
+                self.prev_inds.add(this_ind)
+                self.put_in_bin(this_ind, 0)
 
 
     def _get_arg_key(self):
@@ -141,7 +148,7 @@ class SmartForceInst:
             return p_1+p_2
 
         # multiplication uses foil method
-        # TODO: find faster way to do this
+        # TODO: Use np.polynomial to make this faster
         new_poly = np.zeros_like(p_1)
         for i in range(p_1.shape[0]):
             part = p_1[i] * p_2
@@ -218,7 +225,7 @@ class SmartForceInst:
         
         # check key point restraints
         for i in range(len(self.upper_bounds)):
-            if key[i] > self.upper_bounds[i]:
+            if abs(key[i]) > abs(self.upper_bounds[i]):
                 # violates constraint
                 return -1, 0
 
@@ -235,7 +242,7 @@ class SmartForceInst:
             # combine polynomials of children
             new_poly = self.poly_op(op, self.ind_lib[op_a].poly, self.ind_lib[op_b].poly)
         for i in range(new_poly.shape[0]):
-            if new_poly[i] > self.constraints[i]:
+            if abs(new_poly[i]) > abs(self.constraints[i]):
                 # violates constraint
                 return -1, 0
 
@@ -327,7 +334,7 @@ class SmartForceInst:
                     t_key = self.ind_lib[t_ind].key
 
                     # calculate keys of all trees formed by combining t_key with another known
-                    if iterative_deepening and self.ind_lib[t_ind].order != desired_order:
+                    if (not SAFE_NEGATIVE or not self.allow_negative) and iterative_deepening and self.ind_lib[t_ind].order != desired_order:
                         pass
                     else:
                         # iterate through all added keys
@@ -335,7 +342,7 @@ class SmartForceInst:
                         for other_cost in range(0, (2*desired_order)-self.ind_lib[t_ind].cost):
                             for added_ind in self.bins.get(other_cost, []):
                                 added_mat = np.add(np.array(t_key), np.array(self.ind_lib[added_ind].key))
-                                if iterative_deepening and max(self.ind_lib[added_ind].order, self.ind_lib[t_ind].order) != desired_order:
+                                if (not SAFE_NEGATIVE or not self.allow_negative) and iterative_deepening and max(self.ind_lib[added_ind].order, self.ind_lib[t_ind].order) != desired_order:
                                     # iterative deepening skip
                                     continue
                                 # try saving this new node
@@ -367,12 +374,12 @@ class SmartForceInst:
                     
                     # same as above but with multiplication
                     # TODO: decompose this block into function called for both ADD and MULT
-                    if iterative_deepening and self.ind_lib[t_ind].order > (desired_order / 2) and self.ind_lib[t_ind].order != desired_order:
+                    if (not SAFE_NEGATIVE or not self.allow_negative) and iterative_deepening and self.ind_lib[t_ind].order > (desired_order / 2) and self.ind_lib[t_ind].order != desired_order:
                         pass
                     else:
                         for other_cost in range(0, (2*desired_order)-self.ind_lib[t_ind].cost):
                             for multed_ind in self.bins.get(other_cost, []):
-                                if iterative_deepening and self.ind_lib[multed_ind].order + self.ind_lib[t_ind].order != desired_order:
+                                if (not SAFE_NEGATIVE or not self.allow_negative) and iterative_deepening and self.ind_lib[multed_ind].order + self.ind_lib[t_ind].order != desired_order:
                                     # iterative deepening skip
                                     continue
                                 multed_mat = np.multiply(np.array(t_key), np.array(self.ind_lib[multed_ind].key))
@@ -486,7 +493,7 @@ class SmartForceInst:
 
 def main():
     # init
-    inst = SmartForceInst(np.array(CONSTRAINTS_TO_USE), check_depth=True)
+    inst = SmartForceInst(np.array(CONSTRAINTS_TO_USE), check_depth=True, allow_negative=True)
 
     # execute
     start_time = time.time()
@@ -496,7 +503,7 @@ def main():
     # save final output
     sys.stdout.write("Saving... ")
     sys.stdout.flush()
-    inst.save("depth.csv")
+    inst.save("allow_negative.csv")
     print("done.")
 
 if __name__ == '__main__':
