@@ -3,6 +3,8 @@ import numpy as np
 import numpy.polynomial as poly
 from sklearn.metrics import mean_squared_error
 
+from super_circuit import SuperCircuit
+
 """
 Framework for potential stochastic search algorithm.
 """
@@ -25,41 +27,36 @@ def poly_MSE(a_poly, b_poly):
 
 class SearchEngine:
 
-    def __init__(self):
-        nodes = [] # all of nodes that a pointer could go to
-        leafs = {} # all of the const leaf nodes currently in use
-        arg = # the argument leaf node
+    def __init__(self, circuit: SuperCircuit):
+        self.circuit = circuit.copy()
 
-    def search(max_iters):
+    def search(self, max_iters):
 
         # keep track of the best solution that we have found
         best_solution = None
-
-        # the node that we are currently working with
-        curr_node = Node()
 
         # do iterations
         for iter in range(max_iters):
 
             # try making a change to the node
             change = create_some_change
-            valid = curr_node.do_change(change) # if False change was invalid and not done
+            valid = circuit.do_change(change) # if False change was invalid and not done
 
             # make sure that this change is valid
             if valid:
 
                 # check whether we want to keep this change, according to the metaheuristic
-                accept = flip_accept_coin(curr_node.cost)
+                accept = flip_accept_coin(self.circuit.cost)
                 if accept:
 
                     # check is we have found a new best solution
-                    if best_solution == None or (curr_node.is_solution and curr_node.cost < best_solution.cost):
-                        best_solution = curr_node.copy()
+                    if best_solution == None or (self.circuit.is_solution and self.circuit.cost < best_solution.cost):
+                        best_solution = self.circuit.copy()
                 
                 else:
 
                     # undo the last change because it was bad
-                    curr_node.undo_change(change)
+                    self.circuit.undo_change(change)
 
         return best_solution
 

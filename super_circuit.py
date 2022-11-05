@@ -60,6 +60,8 @@ class SuperCircuit:
         # get root node of tree
         self.root = None
 
+        # TODO: track dependency sets to avoid circular dependancy
+
     def getValNode(self, val):
         if val in self.val_leaves:
             return self.val_leaves[val]
