@@ -227,7 +227,11 @@ class SuperCircuit:
         track_stack = []
         curr = self.root
 
+        max_stack_size = 1.5*(len(self.nodes) + len(self.arg_leaves) + len(self.val_leaves))
         while True:
+            if len(track_stack) > max_stack_size:
+                raise RuntimeError("Evaluation stack depth exceeds limit, circuit likely contains circular dependency.")
+
             if curr.is_leaf:
                 if curr.arg != None:
                     outs[curr] = args[curr.arg]
