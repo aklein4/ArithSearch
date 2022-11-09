@@ -63,17 +63,16 @@ class SuperNode:
         self._update_depends()
         return True
         
-    def _update_depends(self, mem=set()):
-        if self in mem:
-            return
+    def _update_depends(self):
 
-        self.depends_on = self.operands.copy()
+        new_depends = self.operands.copy()
         for op in self.operands:
-            self.depends_on = self.depends_on | op.depends_on
+            new_depends = new_depends | op.depends_on
 
-        mem.add(self)
-        for out in self.outputs:
-            out.update_depends(mem)
+        if new_depends != self.depends_on:
+            self.depends_on = new_depends
+            for out in self.outputs:
+                out._update_depends()
 
 class SuperCircuit:
 
