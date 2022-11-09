@@ -4,6 +4,8 @@ from circuit import OPERATIONS, OpInfo
 class SuperNode:
 
     def __init__(self, operands=None, operation=None, is_leaf=False, arg=None, val=None):
+        if operands != None and type(operands) is not set:
+            raise ValueError("Operands must be presented as a set!")
 
         # make sure args are coherant
         if not is_leaf and (operands == None or operation == None):
@@ -16,38 +18,71 @@ class SuperNode:
             raise ValueError("D. SuperNode must have arg or val if leaf.")
 
         self.outputs = set() # store pointer to nodes that take this as input
+        self.depends_on = set() # store the nodes that this depends on
+
         self.is_leaf = is_leaf # whether this is leaf
         if self.is_leaf:
             # if leaf, then either const val or arg
             self.arg = arg # number representing index of input
             self.val = val
+
         else:
-            # else do operation
+            # else does operation
             self.operation = operation
             self.operands = operands
 
             for operand in operands:
                 operand.set_output(self)
+                self.depends_on.add(operand)
+                self.depends_on = self.depends_on | operand.depends_on
     
+
     def set_output(self, out):
         # set node as output of self
         self.outputs.add(out)
 
     def remove_output(self, out):
+        # remove node as output of self
         self.outputs.remove(out)
 
 
+    def change_input(self, old_input, new_input):
+        if self.is_leaf:
+            raise ValueError("Cannot change the input to a leaf!")
+
+        # check to avoid circular dependencies
+        if new_input is self or self in new_input.depends_on:
+            return False
+
+        old_input.remove_output(self)
+        new_input.set_output(self)
+
+        self.operands.remove(old_input)
+        self.operands.add(new_input)
+
+        self._update_depends()
+        return True
+        
+    def _update_depends(self, mem=set()):
+        if self in mem:
+            return
+
+        self.depends_on = self.operands.copy()
+        for op in self.operands:
+            self.depends_on = self.depends_on | op.depends_on
+
+        mem.add(self)
+        for out in self.outputs:
+            out.update_depends(mem)
+
 class SuperCircuit:
 
-    def __init__(self, n_args):
+    def __init__(self, n_args, costs={OPERATIONS.MULT: 1, OPERATIONS.ADD: 1}):
         # number of inputs that this tree takes
         self.n_args = n_args
 
-        # hold nodes in some data type
+        # all nodes that are not leaves
         self.nodes = set()
-
-        # hold all nodes that point to a box
-        self.end_nodes = set()
 
         # hold const leaves in dict with val -> node
         self.val_leaves = {}
@@ -60,9 +95,24 @@ class SuperCircuit:
         # get root node of tree
         self.root = None
 
-        # TODO: track dependency sets to avoid circular dependancy
+        # keep track of the number of circle nodes that depend on a given one
+        self.num_dep = {}
+        # keep track of which cicle nodes have multiple outputs
+        self.multi_out = set()
+
+        # keep track of how mush operations cost
+        self.op_costs = costs.copy()
+        # keep track of how much this tree costs
+        self.cost = 0
+
+        # the action that undoes the last action
+        self.undo_action = None
+
 
     def getValNode(self, val):
+        """
+        :return: a leaf node of the given value. Creates one if it doesn't already exist
+        """
         if val in self.val_leaves:
             return self.val_leaves[val]
         else:
@@ -70,25 +120,106 @@ class SuperCircuit:
             self.val_leaves[val] = new_node
             return new_node
 
+
     def getArgNode(self, arg):
+        """
+        :return: The arg node of the corresponding index
+        """
         return self.arg_leaves[arg]
 
-    def addNode(self, operation, operands):
-        new_node = SuperNode(operation=operation, operands=operands)
-        self.nodes.add(new_node)
 
+    def getRoot(self):
+        """
+        :return: The root node
+        """
+        return self.root
+
+
+    def addNode(self, operation, operands):
+        """
+        Add a new node to the tree
+        :arg operation: the operation that this node performs
+        :arg operands: Iterable of operands that this will take as inputs
+        """
+        # TODO: Check if this violates circular dependency
+
+        # create the new node
+        new_node = SuperNode(operation=operation, operands=operands)
+        # add it to the register
+        self.nodes.add(new_node)
+        self.num_dep[new_node] = 0
+        self.cost += self.op_costs[operation]
+
+        # add this dependency to its child nodes
         for op in operands:
-            if self._isPointer(op):
-                self.end_nodes.add(new_node)
-                break
-        
+            if not op.is_leaf:
+                self.num_dep[op] += 1
+                if self.num_dep[op] > 1:
+                    self.multi_out.add(op)
+
+        # this is the new root node if it depends on the old root
         for op in operands:
             if self.root == None or op is self.root:
                 self.root = new_node
                 break
 
-    def _isPointer(self, edge):
-        return edge in self.arg_leaves or edge in self.val_leaves
+    def _change_operation_wrap(self, args):
+        return self.change_operation(args[0], args[1])
+    def change_operation(self, node, operation):
+        if node.is_leaf:
+            raise ValueError("Cannot change the operation of a leaf node!")
+        
+        if node.operation == operation:
+            return False
+
+        self.undo_action = {"func": self._change_operation_wrap, "args": (node, node.operation)}
+        node.operation = operation
+        return True
+
+
+    def _change_input_wrap(self, args):
+        return self.change_input(args[0], args[1], args[2])
+    def change_input(self, node, old_input, new_input):
+        succ = node.change_input(old_input, new_input)
+
+        if succ:
+            self.undo_action = {"func": self._change_input_wrap, "args": (node, new_input, old_input)}
+
+            if not old_input.is_leaf:
+
+                self.num_dep[old_input] -= 1
+                if self.num_dep[old_input] == 1:
+                    self.multi_out.remove(old_input)
+
+            if not new_input.is_leaf:
+                self.num_dep[new_input] += 1
+                if self.num_dep[new_input] > 1:
+                    self.multi_out.add(new_input)
+
+        return succ
+
+
+    def undo(self):
+        if self.undo_action == None:
+            return
+        
+        self.undo_action["func"](self.undo_action["args"])
+
+        self.undo_action == None
+
+
+    def clean(self):
+        to_remove = set()
+        for n in self.num_dep.keys():
+            if self.num_dep[n] == 0:
+                to_remove.add(n)
+        
+        for n in to_remove:
+            self.nodes.remove(n)
+            self.num_dep.pop(n)
+        
+        return len(to_remove)
+
 
     def evaluate(self, args):
 
@@ -109,17 +240,21 @@ class SuperCircuit:
                     curr = track_stack.pop()
 
             else:
-                if curr.operands[0] not in outs.keys():
-                    track_stack.append(curr)
-                    curr = curr.operands[0]
-                elif curr.operands[1] not in outs.keys():
-                    track_stack.append(curr)
-                    curr = curr.operands[1] 
+                for op in curr.operands:
+                    if op not in outs.keys():
+                        track_stack.append(curr)
+                        curr = op
+                        break
                 else:
                     if curr not in outs.keys():
+
+                        op_list = list(curr.operands)
+                        if len(op_list) != 2:
+                            raise ValueError("Node does not have two operands!")
+
                         outs[curr] = curr.operation.func(
-                            outs[curr.operands[0]],
-                            outs[curr.operands[1]]
+                            outs[op_list[0]],
+                            outs[op_list[1]]
                         )
                         if curr is self.root:
                             break
@@ -160,11 +295,14 @@ def main():
 
     x = s.getArgNode(0)
     one = s.getValNode(1)
+    two = s.getValNode(2)
 
-    s.addNode(OPERATIONS.ADD, [x, one])
-
-    print(s.evaluate([7]))
-
+    s.addNode(OPERATIONS.MULT, set([x, one]))
+    print(s.evaluate([1]))
+    print(s.change_operation(s.root, OPERATIONS.ADD))
+    print(s.evaluate([1]))
+    s.undo()
+    print(s.evaluate([1]))
 
 if __name__ == '__main__':
     main()
