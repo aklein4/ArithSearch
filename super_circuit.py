@@ -415,9 +415,10 @@ class SuperCircuit:
         while True:
             good = True
             if curr.is_leaf:
-                other_lib[self.val_leaves[curr.val]] = new_circ.getValNode(curr.val)
+                other_lib[self.getValNode[curr.val]] = new_circ.getValNode(curr.val)
                 curr = track_stack.pop()
                 continue
+
             for op in curr.operands:
                 if not op in other_lib.keys():
                     track_stack.append(curr)

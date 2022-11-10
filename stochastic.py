@@ -178,9 +178,9 @@ class SearchEngine:
                         best_solution = self.circuit.copy()
 
                 # get new score from change
-                new_score = C_cost*self.circuit.cost + C_acc*poly_MSE(self.target, out_coefs)
+                new_score = abs(C_cost*self.circuit.cost + C_acc*poly_MSE(self.target, out_coefs))
 
-                if self.target == out_coefs or old_score == None or new_score <= old_score or random.random() <= 0.01+np.exp(-abs(new_score-old_score)/temp):
+                if self.target == out_coefs or old_score == None or new_score <= old_score or random.random() <= 0.001+np.exp(-abs(new_score-old_score)/temp):
                     # take this new circuit
                     self.circuit.optimize()
                     old_score = new_score
@@ -204,13 +204,24 @@ class SearchEngine:
         return best_solution
 
 def main():
-    target = SparsePoly(2)
-    target[1, 0] = 1
-    target[0, 1] = 1
+    target = SparsePoly(3)
+    target[1, 0, 0] = 1
+    target[0, 1, 0] = 1
     target *= target
-    engine = SearchEngine(target, n_vals=5, costs={OPERATIONS.MULT: 1, OPERATIONS.ADD: 1})
-    solution = engine.search(100000, .25, 1, 0.5)
+    t_2 = SparsePoly(3)
+    t_2[0, 0, 1] = 2
+    target *= t_2
+    solution = None
+    tries = 0
+    while solution == None and tries < 10:
+        tries += 1
+        try:
+            engine = SearchEngine(target, n_vals=5, costs={OPERATIONS.MULT: 1, OPERATIONS.ADD: 1})
+            solution = engine.search(100000, .25, 1, 0.5)
+        except:
+            pass
 
+    print("target:", target)
     if solution == None:
         print("no solution found.")
         exit()

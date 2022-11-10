@@ -35,6 +35,8 @@ class SparsePoly:
             if z not in new_p.dict.keys():
                 new_p.dict[z] = 0
             new_p.dict[z] += other
+            if new_p.dict[z] == 0:
+                new_p.dict.pop(z)
             return new_p
 
         elif isinstance(other, SparsePoly):
@@ -47,6 +49,13 @@ class SparsePoly:
                 if me not in new_p.dict.keys():
                     new_p.dict[me] = 0
                 new_p.dict[me] += self.dict[me]
+
+            to_remove = set()
+            for k in new_p.dict.keys():
+                if new_p.dict[k] == 0:
+                    to_remove.add(k)
+            for k in to_remove:
+                new_p.dict.pop(k)
             return new_p
 
         else:
