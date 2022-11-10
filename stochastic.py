@@ -35,7 +35,7 @@ class SearchEngine:
 
         for i in range(1, n_vals+1):
             self.circuit.getValNode(i)
-            self.circuit.getValNode(-i)
+            # self.circuit.getValNode(-i)
 
     def get_samples(self, samples_per_arg):
         size = samples_per_arg**self.n_args
@@ -60,7 +60,7 @@ class SearchEngine:
     # def get_target_output(self, samples):
     #     return self.target_func(samples)
 
-    def search(self, max_iters, C_cost, C_acc, temp, clean_freq=100, verbose=True):
+    def search(self, max_iters, C_cost, C_acc, temp, clean_freq=100, verbose=True, return_on_first=False):
 
         # things relating to the target
         samples = self.get_samples(10)
@@ -98,10 +98,7 @@ class SearchEngine:
                     new_msg += "\nrejected changes: " + str(rejected_changes)
                     new_msg += "\nfailed changes: " + str(failed_changes)
                     new_msg += "\ncurrent score: " + str(old_score)
-                    # coefs = np.trim_zeros(prev_coefs)
-                    # if coefs.size == 0:
-                    #     coefs = np.array([0])
-                    # new_msg += "\ncurrent polynomial: " + str(poly.Polynomial(coefs)) + "\n\n"
+                    new_msg += "\ncurrent cost: " + str(self.circuit.cost)
                     new_msg += "\ncurrent polynomial: " + str(prev_coefs) + "\n\n"
                     sys.stdout.write(new_msg)
                     sys.stdout.flush()
@@ -176,6 +173,8 @@ class SearchEngine:
                     found_solutions += 1
                     if best_solution is None or self.circuit.cost < best_solution.cost:
                         best_solution = self.circuit.copy()
+                    if return_on_first:
+                        return best_solution
 
                 # get new score from change
                 new_score = abs(C_cost*self.circuit.cost + C_acc*poly_MSE(self.target, out_coefs))
@@ -208,16 +207,18 @@ def main():
     target[1, 0, 0] = 1
     target[0, 1, 0] = 1
     target *= target
+    t_1 = target.copy()
     t_2 = SparsePoly(3)
     t_2[0, 0, 1] = 2
     target *= t_2
     solution = None
-    tries = 0
-    while solution == None and tries < 10:
-        tries += 1
+    while solution == None:
         try:
-            engine = SearchEngine(target, n_vals=5, costs={OPERATIONS.MULT: 1, OPERATIONS.ADD: 1})
-            solution = engine.search(100000, .25, 1, 0.5)
+            engine = SearchEngine(target, n_vals=4, costs={OPERATIONS.MULT: 1, OPERATIONS.ADD: 1})
+            solution = engine.search(100000, .25, 1, 0.5, return_on_first=True)
+        except KeyboardInterrupt:
+            print("killed.")
+            break
         except:
             pass
 
