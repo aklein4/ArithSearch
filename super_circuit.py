@@ -397,6 +397,13 @@ class SuperCircuit:
                             self.change_input(op_node, op_node.operands[ind], better)
                             change = True
                             break
+                
+                elif node.operation == OPERATIONS.MULT and sum([1 if op.is_leaf and op.val is 1 else 0 for op in node.operands]) > 0:
+                    op_node = 0
+                    if node.operands[0].is_leaf and node.operands[0].val is 1:
+                        op_node == 1
+                    self.removeNode(node, node.operands[op_node])
+                    change = True
 
     def copy(self):
         new_circ = SuperCircuit(self.n_args, costs=self.op_costs)
