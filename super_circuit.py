@@ -1,6 +1,7 @@
 
 from circuit import OPERATIONS, OpInfo
 import numpy as np
+from sparse_poly import SparsePoly
 
 class SuperNode:
 
@@ -86,6 +87,8 @@ class SuperCircuit:
         # all nodes including leaves
         self.all_nodes = set()
 
+        self.leaf_nodes = set()
+
         self._unclean = set()
 
         # hold const leaves in dict with val -> node
@@ -97,6 +100,7 @@ class SuperCircuit:
         ]
         for a in self.arg_leaves:
             self.all_nodes.add(a)
+            self.leaf_nodes.add(a)
 
         # keep track of how mush operations cost
         self.op_costs = costs.copy()
@@ -109,7 +113,7 @@ class SuperCircuit:
         # get root node of tree
         self.root = None
 
-    def getValNode(self, val):
+    def getValNode(self, val, save=True):
         """
         :return: a leaf node of the given value. Creates one if it doesn't already exist
         """
@@ -117,8 +121,10 @@ class SuperCircuit:
             return self.val_leaves[val]
         else:
             new_node = SuperNode(is_leaf=True, val=val)
-            self.val_leaves[val] = new_node
-            self.all_nodes.add(new_node)
+            if save:
+                self.val_leaves[val] = new_node
+                self.all_nodes.add(new_node)
+                self.leaf_nodes.add(new_node)
             self._unclean.add(new_node)
             return new_node
 
@@ -237,7 +243,7 @@ class SuperCircuit:
 
         succ = undo_action["func"](undo_action["args"])
         if succ is False:
-            print("WARNINGundo failed in circuit")
+            print("WARNING: undo failed in circuit")
         
         while len(self.undo_stack) > old_len-1:
             if len(self.undo_stack) == 0:
@@ -276,7 +282,6 @@ class SuperCircuit:
         track_stack = []
         curr = self.root
 
-        max_stack_size = 1.5*(len(self.all_nodes))
         while True:
             if curr in track_stack:
                 raise RuntimeError("Circular dependency in evaluate!")
@@ -316,6 +321,82 @@ class SuperCircuit:
 
         return outs[self.root]
 
+    def get_poly(self):
+
+        outs = {}
+        track_stack = []
+        curr = self.root
+
+        while True:
+            if curr in track_stack:
+                raise RuntimeError("Circular dependency in get_poly!")
+
+            if curr.is_leaf:
+                if curr.arg != None:
+                    s = SparsePoly(self.n_args)
+                    l = [0 for i in range(self.n_args)]
+                    l[curr.arg] = 1
+                    s[l] = 1
+                    if curr is self.root:
+                        return s
+                    outs[curr] = s
+                    curr = track_stack.pop()
+                else:
+                    s = SparsePoly(self.n_args)
+                    s += curr.val
+                    if curr is self.root:
+                        return s
+                    outs[curr] = s
+                    curr = track_stack.pop()
+
+            else:
+                for op in curr.operands:
+                    if op not in outs.keys():
+                        track_stack.append(curr)
+                        curr = op
+                        break
+                else:
+                    if curr not in outs.keys():
+
+                        if len(curr.operands) != 2:
+                            raise ValueError("Node does not have two operands! " + str(len(curr.operands)))
+
+                        outs[curr] = curr.operation.func(
+                            outs[curr.operands[0]],
+                            outs[curr.operands[1]]
+                        )
+                        if curr is self.root:
+                            break
+
+                    curr = track_stack.pop()
+
+        return outs[self.root]
+
+    def optimize(self):
+        change = True
+        while change:
+            node_copy = self.nodes.copy()
+            change = False
+            for node in node_copy:
+                if sum([1 if op.is_leaf and op.val != None else 0 for op in node.operands]) == 2:
+                    better = self.getValNode(node.operation.func(node.operands[0].val, node.operands[1].val), save=False)
+                    self.change_input(node, node.operands[0], better)
+                    self.removeNode(node, better)
+                    change = True
+
+                elif node.operation == OPERATIONS.ADD and sum([1 if op.is_leaf and op.val != None else 0 for op in node.operands]) == 1:
+
+                    for op_node in node.operands:
+                        ind_op = 0 if node.operands[0] is op_node else 1
+
+                        if (not op_node.is_leaf) and op_node.operation == OPERATIONS.ADD and sum([1 if op.is_leaf and op.val != None else 0 for op in op_node.operands]) > 0:
+
+                            ind = 0 if op_node.operands[0].is_leaf and op_node.operands[0].val != None else 1
+                            better = self.getValNode(node.operation.func(node.operands[1-ind_op].val, op_node.operands[ind].val), save=False)
+                            self.removeNode(node, op_node)
+                            self.change_input(op_node, op_node.operands[ind], better)
+                            change = True
+                            break
 
     def copy(self):
         new_circ = SuperCircuit(self.n_args, costs=self.op_costs)
@@ -333,12 +414,16 @@ class SuperCircuit:
         curr = self.root
         while True:
             good = True
+            if curr.is_leaf:
+                other_lib[self.val_leaves[curr.val]] = new_circ.getValNode(curr.val)
+                curr = track_stack.pop()
+                continue
             for op in curr.operands:
                 if not op in other_lib.keys():
                     track_stack.append(curr)
                     curr = op
                     good = False
-                    continue
+                    break
             if not good:
                 continue
             other_ops = [other_lib[op] for op in curr.operands]
@@ -374,7 +459,7 @@ def main():
     one = s.getValNode(1)
     two = s.getValNode(2)
 
-    s.addNode(OPERATIONS.MULT, set([x, two]))
+    s.addNode(OPERATIONS.MULT, [x, two])
     print(s.evaluate([1]))
     s.change_operation(s.root, OPERATIONS.ADD)
     print(s.evaluate([1]))
@@ -382,7 +467,7 @@ def main():
     print(s.evaluate([1]))
 
     s_2 = s.copy()
-    print(s_2.evaluate([1]))
+    print(s_2.get_poly())
 
 if __name__ == '__main__':
     main()

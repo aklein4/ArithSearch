@@ -1,13 +1,18 @@
 
 import numpy as np
+import numpy.polynomial as poly
 import random
 import itertools
 import sys
 import time
-from sklearn.metrics import mean_squared_error
+from sklearn.metrics import mean_squared_error, mean_absolute_percentage_error
+from sparse_poly import  SparsePoly, poly_MSE, LETTERS
 
 from super_circuit import SuperCircuit
 from circuit import OPERATIONS
+
+import warnings
+warnings.simplefilter('ignore', np.RankWarning)
 
 """
 Framework for potential stochastic search algorithm.
@@ -23,10 +28,10 @@ def not_my_op(me):
 
 class SearchEngine:
 
-    def __init__(self, target_func, n_args, costs={OPERATIONS.MULT: 1, OPERATIONS.ADD: 1}, n_vals=10):
-        self.circuit = SuperCircuit(n_args, costs=costs)
-        self.target_func = target_func
-        self.n_args = n_args
+    def __init__(self, target: SparsePoly, costs={OPERATIONS.MULT: 1, OPERATIONS.ADD: 1}, n_vals=10):
+        self.circuit = SuperCircuit(target.n, costs=costs)
+        self.target = target.copy()
+        self.n_args = target.n
 
         for i in range(1, n_vals+1):
             self.circuit.getValNode(i)
@@ -52,22 +57,23 @@ class SearchEngine:
             samples = np.expand_dims(samples, 0)
         return samples.astype(np.int64)
 
-    def get_target_output(self, samples):
-        return self.target_func(samples)
+    # def get_target_output(self, samples):
+    #     return self.target_func(samples)
 
-    def search(self, max_iters, samples_per_arg, C_cost, C_acc, p_accept, clean_freq=100, verbose=True):
+    def search(self, max_iters, C_cost, C_acc, temp, clean_freq=100, verbose=True):
 
         # things relating to the target
-        samples = self.get_samples(samples_per_arg)
-        target = self.get_target_output(samples)
+        samples = self.get_samples(10)
+        # target = np.pad(self.target, (0, samples.shape[1] - self.target.size + 1))
 
         # keep track of the best solution that we have found
         best_solution = None
         old_score = None
+        prev_coefs = SparsePoly(self.n_args)
 
         # actions to choose from
         actions = [
-            i for i in range(6)
+            i for i in range(-2, 5)
         ]
 
         # verbose stuff
@@ -91,7 +97,12 @@ class SearchEngine:
                     new_msg += "\naccepted changes: " + str(accepted_changes)
                     new_msg += "\nrejected changes: " + str(rejected_changes)
                     new_msg += "\nfailed changes: " + str(failed_changes)
-                    new_msg += "\ncurr cost: " + str(self.circuit.cost) + "\n\n"
+                    new_msg += "\ncurrent score: " + str(old_score)
+                    # coefs = np.trim_zeros(prev_coefs)
+                    # if coefs.size == 0:
+                    #     coefs = np.array([0])
+                    # new_msg += "\ncurrent polynomial: " + str(poly.Polynomial(coefs)) + "\n\n"
+                    new_msg += "\ncurrent polynomial: " + str(prev_coefs) + "\n\n"
                     sys.stdout.write(new_msg)
                     sys.stdout.flush()
                     msg = new_msg
@@ -103,11 +114,11 @@ class SearchEngine:
             old_cost = self.circuit.cost
             valid = True
 
-            if change == 0:
+            if change <= 0:
                 # new root
                 self.circuit.addNode(random_op(), [
                     self.circuit.root if not self.circuit.root is None else random.sample(self.circuit.all_nodes, 1)[0],
-                    random.sample(self.circuit.all_nodes, 1)[0]
+                    random.sample(self.circuit.leaf_nodes, 1)[0]
                 ])
 
             elif change == 1:
@@ -119,11 +130,12 @@ class SearchEngine:
                 # insert randomly
                 upper = random.sample(self.circuit.nodes, 1)[0]
                 base = random.sample(upper.operands, 1)[0]
-                other = random.sample(set(self.circuit.arg_leaves) | set(self.circuit.val_leaves.values()), 1)[0]
+                other = random.sample(self.circuit.leaf_nodes, 1)[0]
                 new_node = self.circuit.addNode(random_op(), [base, other])
                 valid = self.circuit.change_input(upper, base, new_node)
 
             elif change == 3:
+                # change connection
                 base = random.sample(self.circuit.nodes, 1)[0]
                 old_op = random.sample(base.operands, 1)[0]
                 new_op = random.sample(self.circuit.all_nodes, 1)[0]
@@ -131,9 +143,22 @@ class SearchEngine:
 
             elif change >= 4:
                 # remove rand
+                # node = random.sample(self.circuit.nodes, 1)[0]
+                # replace = random.sample(node.operands, 1)[0]
+                # valid = self.circuit.removeNode(node, replace)
                 node = random.sample(self.circuit.nodes, 1)[0]
-                replace = random.sample(node.operands, 1)[0]
-                valid = self.circuit.removeNode(node, replace)
+                timeout = 0
+                while sum([1 if op.is_leaf else 0 for op in node.operands]) == 0:
+                    timeout += 1
+                    if timeout == 10:
+                        valid = False
+                        break
+                    node = random.sample(self.circuit.nodes, 1)[0]
+                if valid:
+                    replace = random.sample(node.operands, 1)[0]
+                    while replace.is_leaf and sum([1 if op.is_leaf else 0 for op in node.operands]) < 2:
+                        replace = random.sample(node.operands, 1)[0]
+                    valid = self.circuit.removeNode(node, replace)
 
             self.circuit.recalc_cost()
 
@@ -141,27 +166,33 @@ class SearchEngine:
             if valid:
 
                 # try this circuit on the samples
-                output = self.circuit.evaluate(samples)
+                # output = self.circuit.evaluate(samples)
+                # out_coefs = np.flip(np.polyfit(samples[0], output, 10).round())
+                out_coefs = self.circuit.get_poly()
 
-                if np.array_equal(output, target):
+                if out_coefs == self.target:
                     # this is a solution
+                    self.circuit.optimize()
                     found_solutions += 1
                     if best_solution is None or self.circuit.cost < best_solution.cost:
                         best_solution = self.circuit.copy()
 
                 # get new score from change
-                new_score = C_cost*self.circuit.cost + C_acc*mean_squared_error(target, output)
+                new_score = C_cost*self.circuit.cost + C_acc*poly_MSE(self.target, out_coefs)
 
-                if np.array_equal(output, target) or old_score == None or new_score <= old_score or random.random() <= p_accept:
+                if self.target == out_coefs or old_score == None or new_score <= old_score or random.random() <= 0.01+np.exp(-abs(new_score-old_score)/temp):
                     # take this new circuit
+                    self.circuit.optimize()
                     old_score = new_score
                     accepted_changes += 1
+                    prev_coefs = out_coefs
                 else:
                     # undo the last change because it was bad
                     self.circuit.undo()
                     self.circuit.cost = old_cost
                     rejected_changes += 1
-            
+                self.circuit.optimize()
+
             else:
                 failed_changes += 1
 
@@ -173,8 +204,62 @@ class SearchEngine:
         return best_solution
 
 def main():
-    engine = SearchEngine(lambda x: 3*x[0]**4 + 4*x[0]**2 + 2*x[0] + 1, 1, n_vals=2, costs={OPERATIONS.MULT: 1, OPERATIONS.ADD: .25})
-    engine.search(100000, 10, 1, 1, 0.5)
+    target = SparsePoly(2)
+    target[1, 0] = 1
+    target[0, 1] = 1
+    target *= target
+    engine = SearchEngine(target, n_vals=5, costs={OPERATIONS.MULT: 1, OPERATIONS.ADD: 1})
+    solution = engine.search(100000, .25, 1, 0.5)
+
+    if solution == None:
+        print("no solution found.")
+        exit()
+
+    outs = {}
+    track_stack = []
+    curr = solution.root
+    ind = 1
+
+    while True:
+        if curr in track_stack:
+            raise RuntimeError("Circular dependency in evaluate!")
+
+        if curr.is_leaf:
+            if curr.arg != None:
+                print(ind, "--", LETTERS[curr.arg])
+                if curr is solution.root:
+                    break
+                outs[curr] = ind
+                ind += 1
+                curr = track_stack.pop()
+            else:
+                print(ind, "--", curr.val)
+                if curr is solution.root:
+                    break
+                outs[curr] = ind
+                ind += 1
+                curr = track_stack.pop()
+
+        else:
+            for op in curr.operands:
+                if op not in outs.keys():
+                    track_stack.append(curr)
+                    curr = op
+                    break
+            else:
+                if curr not in outs.keys():
+
+                    if len(curr.operands) != 2:
+                        raise ValueError("Node does not have two operands! " + str(len(curr.operands)))
+
+                    print(ind, "--", curr.operation.name, "--", outs[curr.operands[0]], "--",
+                        outs[curr.operands[1]])
+                    outs[curr] = ind
+                    ind += 1
+                    if curr is solution.root:
+                        break
+
+                curr = track_stack.pop()
 
 if __name__ == '__main__':
     main()
