@@ -60,7 +60,7 @@ class SearchEngine:
     # def get_target_output(self, samples):
     #     return self.target_func(samples)
 
-    def search(self, max_iters, C_cost, C_acc, temp, clean_freq=100, verbose=True, return_on_first=False):
+    def search(self, max_iters, C_cost, C_acc, temp, clean_freq=100, verbose=True, return_on_first=False, L=0.5):
 
         # things relating to the target
         samples = self.get_samples(10)
@@ -79,6 +79,7 @@ class SearchEngine:
         # verbose stuff
         last_time = time.time_ns()
 
+        best_score = 9999
         found_solutions = 0
         accepted_changes = 0
         rejected_changes = 0
@@ -97,6 +98,7 @@ class SearchEngine:
                     new_msg += "\naccepted changes: " + str(accepted_changes)
                     new_msg += "\nrejected changes: " + str(rejected_changes)
                     new_msg += "\nfailed changes: " + str(failed_changes)
+                    new_msg += "\nbest score: " + str(best_score)
                     new_msg += "\ncurrent score: " + str(old_score)
                     new_msg += "\ncurrent cost: " + str(self.circuit.cost)
                     new_msg += "\ncurrent polynomial: " + str(prev_coefs) + "\n\n"
@@ -177,7 +179,11 @@ class SearchEngine:
                         return best_solution
 
                 # get new score from change
-                new_score = abs(C_cost*self.circuit.cost + C_acc*poly_MSE(self.target, out_coefs))
+                diff = self.target - out_coefs
+                new_score = abs(C_cost*self.circuit.cost + C_acc*sum(abs(x)**L for x in diff.dict.values()))
+
+                if new_score < best_score:
+                    best_score = new_score
 
                 if self.target == out_coefs or old_score == None or new_score <= old_score or random.random() <= 0.001+np.exp(-abs(new_score-old_score)/temp):
                     # take this new circuit
@@ -214,8 +220,8 @@ def main():
     solution = None
     while solution == None:
         try:
-            engine = SearchEngine(target, n_vals=4, costs={OPERATIONS.MULT: 1, OPERATIONS.ADD: 1})
-            solution = engine.search(100000, .25, 1, 0.5, return_on_first=True)
+            engine = SearchEngine(target, n_vals=4, costs={OPERATIONS.MULT: 1, OPERATIONS.ADD: 0.25})
+            solution = engine.search(100000, 0.25, 1, 1, return_on_first=True, L=0.5)
         except KeyboardInterrupt:
             print("killed.")
             break
@@ -264,7 +270,7 @@ def main():
                     if len(curr.operands) != 2:
                         raise ValueError("Node does not have two operands! " + str(len(curr.operands)))
 
-                    print(ind, "--", curr.operation.name, "--", outs[curr.operands[0]], "--",
+                    print(ind, "--", curr.operation.name, "<-", outs[curr.operands[0]], "<-",
                         outs[curr.operands[1]])
                     outs[curr] = ind
                     ind += 1
