@@ -21,6 +21,7 @@ class CandidateNode:
     grad: np.ndarray
     H: np.ndarray
     id: int
+    poly: SparsePoly
 @dataclass
 class CandidateCircuit:
     root: CandidateNode
@@ -44,6 +45,14 @@ def get_leaf(n_args, eval_point=DEFAULT_EVAL, arg=-1, val=0):
     if arg != -1:
         grad[arg] = 1
     
+    poly = SparsePoly(n_args)
+    k = [0 for _ in range(n_args)]
+    if arg != -1:
+        k[arg] = 1
+        poly[k] = 1
+    else:
+        poly[k] = val
+
     return CandidateNode(
         OPERATIONS.LEAF,
         True,
@@ -53,7 +62,8 @@ def get_leaf(n_args, eval_point=DEFAULT_EVAL, arg=-1, val=0):
         scaler,
         grad,
         H,
-        random.randint(1, 2**60)
+        random.randint(1, 2**60),
+        poly
     )
 
 
@@ -152,7 +162,7 @@ def analyse_poly(poly: SparsePoly, eval_point=DEFAULT_EVAL):
 
 
 def compare_tensors(a, b):
-    return abs(a[0] - b[0]) + np.linalg.norm(a[1] - b[1]) + np.linalg.norm(a[2] - b[2])
+    return abs(a[0] - b[0]) + np.linalg.norm(a[1] - b[1])/a[1].size + np.linalg.norm(a[2] - b[2])/a[2].size
 
 def tensor_size(a):
     return abs(a[0]) + np.linalg.norm(a[1]) + np.linalg.norm(a[2])
@@ -187,15 +197,9 @@ class CStar:
 
 
     def get_pred(self, circuit: CandidateCircuit, gamma: float):
-        r = circuit.root
+        r = circuit.root.poly
 
-        root_dist = compare_tensors(self.target_tensors, (r.scalar, r.grad, r.H))
-        avg_size = sum([
-        #     tensor_size((n.scalar, n.grad, n.H)) for n in circuit.nodes
-        ]) / max(1, len(circuit.nodes))
-        not_leaves = max(1, sum([1 if not n.is_leaf else 0 for n in circuit.nodes]))
-
-        return circuit.cost + gamma*abs(root_dist)
+        return 1/(1+sum([abs(val) for val in (self.target - r).dict.values()]))**gamma
 
 
     def action(self, circuit: CandidateCircuit, op: OpInfo, operands: list):
@@ -204,10 +208,9 @@ class CStar:
         
         op_list = operands
         scalar, grad, H = None, None, None
-        if op is OPERATIONS.MULT:
-            scalar, grad, H = mult_nodes(op_list[0], op_list[1])
-        else:
-            scalar, grad, H = add_nodes(op_list[0], op_list[1])
+        # if op is OPERATIONS.MULT:
+        #     scalar, grad, H = mult_nodes(op_list[0], op_list[1])
+        scalar, grad, H = add_nodes(op_list[0], op_list[1])
 
         new_node = CandidateNode(
             op,
@@ -218,7 +221,8 @@ class CStar:
             scalar,
             grad,
             H,
-            random.randint(1, 2**60)
+            random.randint(1, 2**60),
+            op.func(op_list[0].poly, op_list[1].poly)
         )
 
         return CandidateCircuit(
@@ -228,26 +232,21 @@ class CStar:
         )
 
     
-    def search(self, max_iters, gamma, verbose=True):
-        q = []
-        base_circuit = self.blank_circuit()
-        heapq.heappush(q, PrioritizedCircuit(
-            self.get_pred(base_circuit, gamma),
-            base_circuit,
-            -1
-        ))
+    def search(self, max_iters, gamma, verbose=True, max_cost=10, use_pred=True):
 
         best_solution = None
+
+        blank = self.blank_circuit()
+        curr = blank
+        blank_pred = self.get_pred(curr, gamma)
+        blank_dist = 0
+        prev_dist = blank_dist
+        prev_pred = blank_pred
+        solutions_found = 0
 
         # verbose stuff
         last_time = time.time_ns()
         for iter in range(1, max_iters+1):
-            curr_item = heapq.heappop(q)
-            if len(q) > 1 and random.random() < 0.5:
-                curr_item = q.pop(random.randrange(0, len(q)))
-            curr_pred = curr_item.priority
-            curr = curr_item.circuit
-            curr_dist = curr_item.dist
 
             if verbose:
                 new_time = time.time_ns()
@@ -255,36 +254,49 @@ class CStar:
                     last_time = new_time
                     print("\niteration:", str(iter)+"/"+str(max_iters))
                     print("solution:", None if best_solution is None else best_solution.cost)
+                    print("solutions found:", solutions_found)
                     print("current cost:", curr.cost)
-                    print("current dist:", curr_dist)
-                    print("current prediction:", curr_pred)
+                    print("current dist:", prev_dist)
+                    print("current prediction:", prev_pred)
                     print(get_poly(curr.root))
                     print("("+self.target_str+")")
+
+            circs = []
+            dists = []
+            preds = []
+            weights = []
 
             seen = set()
             for op1 in range(len(curr.nodes)):
                 for op2 in range(len(curr.nodes)):
                     for oper in [OPERATIONS.ADD, OPERATIONS.MULT]:
-                        fset = frozenset([op1, op2, oper])
+                        fset = frozenset([0, op2, oper])
                         if fset not in seen:
 
                             seen.add(fset)
-                            new_circ = self.action(curr, oper, [curr.nodes[op1], curr.nodes[op2]])
-                            d = compare_tensors(
-                                (new_circ.root.scalar, new_circ.root.grad, new_circ.root.H),
-                                self.target_tensors
-                            )
+                            new_circ = self.action(curr, oper, [curr.root, curr.nodes[op2]])
 
-                            if d == 0:
+                            if new_circ.root.poly == self.target:
                                 if best_solution is None or new_circ.cost < best_solution.cost:
                                     best_solution = new_circ
+                                solutions_found += 1
                             else:
-                                heapq.heappush(q, PrioritizedCircuit(
-                                    self.get_pred(new_circ, gamma),
-                                    new_circ,
-                                    d
-                                ))
+                                pred = self.get_pred(new_circ, gamma)
+                                circs.append(new_circ)
+                                dists.append(0)
+                                preds.append(pred)
+                                weights.append(pred if use_pred else 1.5)
             
+            choice = random.choices([i for i in range(len(circs))], weights=weights, k=1)[0]
+            curr = circs[choice]
+            prev_dist = dists[choice]
+            prev_pred = preds[choice]
+
+            if curr.cost > max_cost:
+                curr = blank
+                prev_dist = blank_dist
+                blank_pred = blank_pred
+
             # fake = self.blank_circuit()
             # heapq.heappush(q, PrioritizedCircuit(
             #                         self.get_pred(fake, gamma),
@@ -292,17 +304,17 @@ class CStar:
             #                         d
             #                     ))
         
-            if len(q) > 100000:
-                clean_q = []
-                done = True
-                for i in range(10000):
-                    it = q[i]
-                    if best_solution == None or it.circuit.cost < best_solution.cost:
-                        done = False
-                    heapq.heappush(clean_q, it)
-                if done:
-                    return best_solution
-                q = clean_q
+            # if len(q) > 100000:
+            #     clean_q = []
+            #     done = True
+            #     for i in range(10000):
+            #         it = q[i]
+            #         if best_solution == None or it.circuit.cost < best_solution.cost:
+            #             done = False
+            #         heapq.heappush(clean_q, it)
+            #     if done:
+            #         return best_solution
+            #     q = clean_q
 
         return best_solution
 
@@ -314,12 +326,15 @@ def main():
     t_2 = SparsePoly(3)
     t_2[0, 0, 1] = 2
     target *= t_2
-    target += t_2 + 1
-
+    target += t_2
+    
     engine = CStar(target, 4)
-    sol = engine.search(10000, 1)
+    sol = engine.search(10000, 5, max_cost=10, use_pred=True)
 
     print("\nTarget:", target)
+    if sol == None:
+        print("NO SOLUTION FOUND.\n")
+        exit()
     print("Solution:", get_poly(sol.root))
     print("Cost:", sol.cost, "\n")
 
