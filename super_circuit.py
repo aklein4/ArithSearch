@@ -6,6 +6,14 @@ from sparse_poly import SparsePoly
 class SuperNode:
 
     def __init__(self, operands=None, operation=None, is_leaf=False, arg=None, val=None):
+        """
+        Create a node for use in SuperCircuit.
+        operands: Nodes that this operates on (if not leaf)
+        operation: Operation this node does (if not leaf)
+        if_leaf: Whether this is a leaf
+        arg: Index of variable that this node represents (if arg leaf)
+        val: Value of constant that this node represents (if const leaf)
+        """
 
         # make sure args are coherant
         if not is_leaf and (operands == None or operation == None):
@@ -20,6 +28,8 @@ class SuperNode:
         self.outputs = set() # store pointer to nodes that take this as input
         self.depends_on = set() # store the nodes that this depends on
 
+        self.valid = True # whether this node has valid dependency
+
         self.is_leaf = is_leaf # whether this is leaf
         if self.is_leaf:
             # if leaf, then either const val or arg
@@ -31,11 +41,16 @@ class SuperNode:
             self.operation = operation
             self.operands = operands
 
+            # save leaves and their dependencies to this dependency
             for operand in operands:
                 operand.set_output(self)
                 self.depends_on.add(operand)
                 self.depends_on = self.depends_on | operand.depends_on
-    
+            
+            # check whether this node is valid
+            if self in self.depends_on:
+                self.valid = False
+
 
     def set_output(self, out):
         # set node as output of self
@@ -47,6 +62,10 @@ class SuperNode:
 
 
     def change_input(self, old_input, new_input):
+        """
+        Tries to remove an input from this node and replace it with another.
+
+        """
         if self.is_leaf:
             raise ValueError("Cannot change the input to a leaf!")
 
@@ -161,6 +180,10 @@ class SuperCircuit:
         else:
             operation = node.operation
             operands = node.operands
+
+        if not new_node.valid:
+            return new_node
+
         # add it to the register
         self.nodes.add(new_node)
         self.all_nodes.add(new_node)

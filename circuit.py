@@ -13,6 +13,7 @@ class _OperationHolder():
     def __init__(self):
         self.ADD = OpInfo(lambda a, b: a+b, "ADD")
         self.MULT = OpInfo(lambda a, b: a*b, "MULT")
+        self.LEAF = OpInfo(lambda a, b: None, "LEAF")
 OPERATIONS = _OperationHolder() # instantiate enum
 
 class Node:

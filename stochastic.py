@@ -115,10 +115,11 @@ class SearchEngine:
 
             if change <= 0:
                 # new root
-                self.circuit.addNode(random_op(), [
+                new_node = self.circuit.addNode(random_op(), [
                     self.circuit.root if not self.circuit.root is None else random.sample(self.circuit.all_nodes, 1)[0],
                     random.sample(self.circuit.leaf_nodes, 1)[0]
                 ])
+                valid = new_node.valid
 
             elif change == 1:
                 # change op
@@ -131,7 +132,9 @@ class SearchEngine:
                 base = random.sample(upper.operands, 1)[0]
                 other = random.sample(self.circuit.leaf_nodes, 1)[0]
                 new_node = self.circuit.addNode(random_op(), [base, other])
-                valid = self.circuit.change_input(upper, base, new_node)
+                valid = new_node.valid
+                if valid:
+                    valid = self.circuit.change_input(upper, base, new_node)
 
             elif change == 3:
                 # change connection
