@@ -109,7 +109,7 @@ class CStar:
 
         q = self.target - r
         if simple:
-            return sum([1 if co!=0 else 0 for co in q.dict.values()])
+            return sum([np.sqrt(abs(co)) for co in q.dict.values()])
         d_plus = sum([abs(co) for co in q.dict.values()])
 
         s_a = set()
@@ -121,7 +121,7 @@ class CStar:
 
         d_x = 1 - sum(self.s_p.intersection(s_a))/sum(self.s_p | s_a)
 
-        cost = self.op_costs[OPERATIONS.ADD]*d_plus + self.op_costs[OPERATIONS.MULT]*d_x
+        cost = d_plus + d_x
 
         return cost
 
@@ -436,15 +436,17 @@ def main():
     target += t_2*2 + 2
     target *= target
     
-    engine = CStar(target, 4)
-    sol = engine.recursive_search(10, 8000, 20, 5, 3, n_models=1)
+    engine = CStar(target, 4, costs={ OPERATIONS.MULT: 1,OPERATIONS.ADD: 0.25 })
+    sol = engine.recursive_search(10, 5000, 10, 1, 8, n_models=2)
 
     print("\nTarget:", target)
     if sol == None:
         print("NO SOLUTION FOUND.\n")
         exit()
     print("Solution:", sol.root.poly)
-    print("Cost:", sol.cost, "\n")
+    print("Additions:", len(sol.root.add_set))
+    print("Multiplications:", len(sol.root.mult_set))
+    print("")
 
 if __name__ == '__main__':
     main()
