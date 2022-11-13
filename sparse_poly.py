@@ -98,7 +98,7 @@ class SparsePoly:
             return new_p
 
         else:
-            raise ValueError("invalid type in __add__")
+            raise ValueError("invalid type in __add__:", type(other))
 
     def __isub_(self, other):
         return self - other
