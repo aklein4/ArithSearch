@@ -121,6 +121,13 @@ class SparsePoly:
                     if tup not in new_p.dict.keys():
                         new_p.dict[tup] = 0
                     new_p.dict[tup] += self.dict[me] * other.dict[them]
+            
+            to_remove = set()
+            for k in new_p.dict.keys():
+                if new_p.dict[k] == 0:
+                    to_remove.add(k)
+            for k in to_remove:
+                new_p.dict.pop(k)
             return new_p
 
         else:
@@ -182,6 +189,18 @@ class SparsePoly:
         return len(self.dict)
 
 
+    def __call__(self, arg):
+
+        summ = 0
+        for k in self.dict.keys():
+            multt = self.dict[k]
+            for i in range(len(k)):
+                if k[i] != 0:
+                    multt *= arg[i]**k[i]
+            summ += multt
+
+        return summ
+
     def __str__(self) -> str:
         s = ""
         for k in self.dict.keys():
@@ -237,7 +256,7 @@ def decode(a: np.ndarray):
 
     return p
 
-def poly_MSE(p1: SparsePoly, p2: SparsePoly):
+def poly_MSE(p1: SparsePoly, p2: SparsePoly, squared=True):
     all_keys = set(p1.dict.keys()) | set(p2.dict.keys())
 
     l1 = []
@@ -246,7 +265,7 @@ def poly_MSE(p1: SparsePoly, p2: SparsePoly):
         l1.append(p1.dict.get(k, 0))
         l2.append(p2.dict.get(k, 0))
 
-    return mean_squared_error(np.array(l1), np.array(l2))
+    return mean_squared_error(np.array(l1), np.array(l2), squared=squared)
 
 def _check_div_answer(vec, *args):
     p1 = args[0]
@@ -293,12 +312,12 @@ def main():
     t_2[0, 0, 1] = 2
     target *= t_2
 
-    div = poly_div(target, t_2)
+    # div = poly_div(target, t_2)
 
-    print("target:", target)
-    print("p_0:", t_2)
-    print("p_x:", div)
-    print("outcome:", div * t_2)
+    # print("target:", target)
+    # print("p_0:", t_2)
+    # print("p_x:", div)
+    # print("outcome:", div * t_2)
 
 if __name__ == '__main__':
     main()
