@@ -75,6 +75,7 @@ class CStar:
             self.leaves.append(leaf)
         for i in range(1, n_vals+1):
             self.leaves.append(get_leaf(self.n, val=i))
+            self.leaves.append(get_leaf(self.n, val=-i))
 
         self._set_constraints()
 
@@ -112,30 +113,15 @@ class CStar:
     def get_pred(self, circuit: CandidateCircuit, simple=False):
         r = circuit.root.poly
 
-        if max(r.dict.values()) > self.max_val or len(r) > len(self.target):
-            return 10000
-
         q = self.target - r
         d_plus = 0
         for k in q.dict.keys():
             if q.dict[k] == 0:
                 continue
-            elif simple and q.dict[k] < 0:
-                return 10000
-            elif simple:
-                d_plus += q.dict[k]
             else:
-                d_plus += np.sqrt(float(abs(q.dict[k])))
-        
-        if simple:
-            return d_plus
+                d_plus += float(abs(q.dict[k]))
 
         s_a = set(circuit.root.poly.dict.keys())
-        for k in s_a:
-            for i in range(len(k)):
-                if k[i] > self.constraints[i]:
-                    return 10000
-
         s_p = set(self.target.dict.keys())
         d_x = sum([sum(k) for k in ((s_p - s_a) | (s_a - s_p)) - circuit.root.poly_set])
 
@@ -364,6 +350,41 @@ class CStar:
         self._set_constraints()
 
         return curr_solution if found else None
+    
+    def splitting_search(self, max_iters, max_cost, alpha, gamma, n_models=0, verbose=True, curr_target=None):
+
+        old_target = self.target
+        old_target_str = self.target_str
+
+        if not curr_target is None:
+            self.target = curr_target
+            self.target_str = str(self.target)
+            self._set_constraints()
+
+        solution = self.sample_search(max_iters, max_cost, alpha, gamma, n_models=n_models, verbose=verbose)
+        if solution == None and len(self.target) > 1:
+            prob_1 = SparsePoly(self.n)
+            prob_2 = SparsePoly(self.n)
+            point = 0
+            for k in self.target.dict.keys():
+                if point < len(self.target.dict.keys()) // 2:
+                    prob_1.dict[k] = self.target.dict[k]
+                else:
+                    prob_2.dict[k] = self.target.dict[k]
+                point += 1
+            sol_1 = self.splitting_search(max_iters, max_cost, alpha, gamma, n_models=n_models, verbose=verbose, curr_target=prob_1)          
+            if sol_1 != None:
+                sol_2 = self.splitting_search(max_iters, max_cost, alpha, gamma, n_models=n_models, verbose=verbose, curr_target=prob_2)
+
+            if sol_1 != None and sol_2 != None:
+                solution = self.add_circuits(sol_1, sol_2)
+
+        self.target = old_target
+        self.target_str = old_target_str
+        self._set_constraints()
+
+        return solution
+
 
     def queue_search(self, max_iters, alpha, verbose=True, max_cost=10, use_pred=True):
         q = []
@@ -453,7 +474,7 @@ def main():
     target *= target
     
     engine = CStar(target, 4, costs={ OPERATIONS.MULT: 1,OPERATIONS.ADD: 0.25 })
-    sol = engine.recursive_search(10, 10000, 10, 1, 6, n_models=0)
+    sol = engine.splitting_search(5000, 10, 8, 6, n_models=0)
 
     print("\nTarget:", target)
     if sol == None:
