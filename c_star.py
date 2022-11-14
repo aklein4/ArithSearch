@@ -20,6 +20,7 @@ class CandidateNode:
     poly: SparsePoly
     add_set: set
     mult_set: set
+    poly_set: set
 @dataclass
 class CandidateCircuit:
     root: CandidateNode
@@ -54,6 +55,7 @@ def get_leaf(n_args, arg=-1, val=0):
         random.randint(1, 2**60),
         poly,
         set(),
+        set(),
         set()
     )
 
@@ -73,15 +75,18 @@ class CStar:
             self.leaves.append(leaf)
         for i in range(1, n_vals+1):
             self.leaves.append(get_leaf(self.n, val=i))
-            self.leaves.append(get_leaf(self.n, val=-i))
 
-        self.s_p = set()
+        self._set_constraints()
+
+
+    def _set_constraints(self):
+        self.constraints = [0 for _ in range(self.n)]
         for k in self.target.dict.keys():
-            elem = np.log(float(abs(self.target.dict[k]))) if self.target.dict[k] != 0 else 0
             for i in range(len(k)):
-                elem += k[i]
-            self.s_p.add(elem)
-
+                if k[i] > self.constraints[i]:
+                    self.constraints[i] = k[i]
+        self.constraints = tuple(self.constraints)
+        self.max_val = max(self.target.dict.values())
 
     def blank_circuit(self, models=[]):
         seen_ids = set()
@@ -107,19 +112,32 @@ class CStar:
     def get_pred(self, circuit: CandidateCircuit, simple=False):
         r = circuit.root.poly
 
+        if max(r.dict.values()) > self.max_val or len(r) > len(self.target):
+            return 10000
+
         q = self.target - r
+        d_plus = 0
+        for k in q.dict.keys():
+            if q.dict[k] == 0:
+                continue
+            elif simple and q.dict[k] < 0:
+                return 10000
+            elif simple:
+                d_plus += q.dict[k]
+            else:
+                d_plus += np.sqrt(float(abs(q.dict[k])))
+        
         if simple:
-            return sum([np.sqrt(abs(co)) for co in q.dict.values()])
-        d_plus = sum([abs(co) for co in q.dict.values()])
+            return d_plus
 
-        s_a = set()
-        for k in r.dict.keys():
-            elem = np.log(float(abs(r.dict[k]))) if r.dict[k] != 0 else 0
+        s_a = set(circuit.root.poly.dict.keys())
+        for k in s_a:
             for i in range(len(k)):
-                elem += k[i]
-            s_a.add(elem)
+                if k[i] > self.constraints[i]:
+                    return 10000
 
-        d_x = 1 - sum(self.s_p.intersection(s_a))/sum(self.s_p | s_a)
+        s_p = set(self.target.dict.keys())
+        d_x = sum([sum(k) for k in ((s_p - s_a) | (s_a - s_p)) - circuit.root.poly_set])
 
         cost = d_plus + d_x
 
@@ -143,6 +161,7 @@ class CStar:
             else:
                 mult_set.add(id)
 
+        new_poly = op.func(operands[0].poly, operands[1].poly)
         new_node = CandidateNode(
             op,
             False,
@@ -150,9 +169,10 @@ class CStar:
             0,
             operands,
             id,
-            op.func(operands[0].poly, operands[1].poly),
+            new_poly,
             add_set,
-            mult_set
+            mult_set,
+            set(operands[0].poly.dict.keys()) | set(operands[1].poly.dict.keys()) | operands[0].poly_set | operands[1].poly_set
         )
 
         cost = circuit.cost + self.op_costs[op]
@@ -225,16 +245,19 @@ class CStar:
                         ):
 
                         pred = self.get_pred(new_circ) if use_pred else 1.5
-                        circs.append(new_circ)
-                        preds.append(pred)
-                        weights.append(1/(new_circ.cost+alpha*pred)**gamma)
 
-                        priority = new_circ.cost+1000*self.get_pred(new_circ, simple=True) if wrapped else new_circ.cost+alpha*pred
-                        if n_models > 0 and (len(models) < n_models or priority < models[-1].priority):
-                            potential_models.append(PrioritizedCircuit(
-                                priority,
-                                new_circ, pred
-                            ))
+                        if pred < 10000:
+
+                            circs.append(new_circ)
+                            preds.append(pred)
+                            weights.append(1/(new_circ.cost+alpha*pred)**gamma)
+
+                            priority = new_circ.cost+1000*self.get_pred(new_circ, simple=True) if wrapped else new_circ.cost+alpha*pred
+                            if n_models > 0 and (len(models) < n_models or priority < models[-1].priority):
+                                potential_models.append(PrioritizedCircuit(
+                                    priority,
+                                    new_circ, pred
+                                ))
                             
             if len(potential_models) > 0 and n_models > 0:
                 new_models = models + potential_models
@@ -269,6 +292,7 @@ class CStar:
         mult_set = a.root.mult_set | b.root.mult_set
         add_set.add(id)
 
+        new_poly = OPERATIONS.ADD.func(a.root.poly, b.root.poly)
         new_node = CandidateNode(
             OPERATIONS.ADD,
             False,
@@ -276,9 +300,10 @@ class CStar:
             0,
             [a.root, b.root],
             id,
-            OPERATIONS.ADD.func(a.root.poly, b.root.poly),
+            new_poly,
             add_set,
-            mult_set
+            mult_set,
+            set(a.root.poly.dict.keys()) | set(b.root.poly.dict.keys()) | a.root.poly_set | b.root.poly_set
         )
 
         cost = (
@@ -310,7 +335,6 @@ class CStar:
 
         old_target = self.target
         old_target_str = self.target_str
-        old_s_p = self.s_p
 
         curr_solution = None
         found = False
@@ -325,27 +349,19 @@ class CStar:
             if curr_solution == None:
                 curr_solution = subsolution
             else:
-                old_score = self.get_pred(curr_solution, simple=True)
                 temp_solution = self.add_circuits(curr_solution, subsolution)
-                temp_score = self.get_pred(temp_solution, simple=True)
-                if  temp_score < old_score or (temp_score == old_score and self.get_pred(temp_solution) < self.get_pred(curr_solution)):
-                    curr_solution = temp_solution
+                curr_solution = temp_solution
         
             if found:
                 break
 
             self.target = old_target - curr_solution.root.poly
             self.target_str = str(self.target)
-            self.s_p = set()
-            for k in self.target.dict.keys():
-                elem = np.log(float(abs(self.target.dict[k]))) if self.target.dict[k] != 0 else 0
-                for i in range(len(k)):
-                    elem += k[i]
-                self.s_p.add(elem)
+            self._set_constraints()
 
         self.target = old_target
         self.target_str = old_target_str
-        self.s_p = old_s_p
+        self._set_constraints()
 
         return curr_solution if found else None
 
@@ -437,7 +453,7 @@ def main():
     target *= target
     
     engine = CStar(target, 4, costs={ OPERATIONS.MULT: 1,OPERATIONS.ADD: 0.25 })
-    sol = engine.recursive_search(10, 5000, 10, 1, 8, n_models=2)
+    sol = engine.recursive_search(10, 10000, 10, 1, 6, n_models=0)
 
     print("\nTarget:", target)
     if sol == None:

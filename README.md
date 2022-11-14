@@ -3,8 +3,8 @@
 ### Current Larget Polynomial Solved:
 16c^2 + 16c + 16a^2c^2 + 32abc^2 + 16b^2c^2 + 4 + 8a^2c + 16abc + 8b^2c + 4a^4c^2 + 16a^3bc^2 + 24a^2b^2c^2 + 16ab^3c^2 + 4b^4c^2
 
-Additions: 32,
-Multiplications: 33
+Additions: 17,
+Multiplications: 14
 
 ## circuit.py
 A simple library for creating, running, and visualizing arithmetic circuits as trees.
