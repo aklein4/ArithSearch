@@ -71,8 +71,10 @@ def generalized_horners(poly, verbose:bool=False, mem=None, sampling=None, early
         for k in s:
             if np.sum(k.a) > 1 and k not in meem:
                 clean.add(k)
-            else:
+            elif np.sum(k.a) == 1:
                 ms += 2
+            else:
+                ms += 1
         return clean, ms
 
     def get_reduced(s: set, d: np.ndarray):
