@@ -75,7 +75,6 @@ class CStar:
             self.leaves.append(leaf)
         for i in range(1, n_vals+1):
             self.leaves.append(get_leaf(self.n, val=i))
-            self.leaves.append(get_leaf(self.n, val=-i))
 
         self._set_constraints()
 
@@ -113,13 +112,18 @@ class CStar:
     def get_pred(self, circuit: CandidateCircuit, simple=False):
         r = circuit.root.poly
 
+        if len(r) > len(self.target) or max(r.dict.values()) > self.max_val:
+            return 1000000
+
         q = self.target - r
         d_plus = 0
         for k in q.dict.keys():
             if q.dict[k] == 0:
                 continue
+            if simple and q.dict[k] < 0:
+                return 1000000
             else:
-                d_plus += float(abs(q.dict[k]))
+                d_plus += np.sqrt(float(abs(q.dict[k])))
 
         s_a = set(circuit.root.poly.dict.keys())
         s_p = set(self.target.dict.keys())
@@ -232,11 +236,11 @@ class CStar:
 
                         pred = self.get_pred(new_circ) if use_pred else 1.5
 
-                        if pred < 10000:
+                        if pred < 1000000:
 
                             circs.append(new_circ)
                             preds.append(pred)
-                            weights.append(1/(new_circ.cost+alpha*pred)**gamma)
+                            weights.append(1/(new_circ.cost-curr.cost+alpha*pred)**gamma)
 
                             priority = new_circ.cost+1000*self.get_pred(new_circ, simple=True) if wrapped else new_circ.cost+alpha*pred
                             if n_models > 0 and (len(models) < n_models or priority < models[-1].priority):
@@ -473,8 +477,8 @@ def main():
     target += t_2*2 + 2
     target *= target
     
-    engine = CStar(target, 4, costs={ OPERATIONS.MULT: 1,OPERATIONS.ADD: 0.25 })
-    sol = engine.splitting_search(5000, 10, 8, 6, n_models=0)
+    engine = CStar(target, 8, costs={ OPERATIONS.MULT: 1,OPERATIONS.ADD: 0.25 })
+    sol = engine.recursive_search(10, 20000, 10, 1, 1, n_models=3)
 
     print("\nTarget:", target)
     if sol == None:
