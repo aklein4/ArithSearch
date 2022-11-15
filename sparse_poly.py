@@ -224,6 +224,15 @@ class SparsePoly:
             max_o = max(max_o, max(k))
         return max_o
 
+
+    def clean(self):
+        new_d = {}
+        for k in self.dict.keys():
+            if self.dict[k] != 0:
+                new_d[k] = self.dict[k]
+        self.dict = new_d
+
+
 def encode(p: SparsePoly, max_order):
     a = np.zeros(2 + (1+max_order) ** p.n, dtype=np.int64)
     a[0] = p.n
