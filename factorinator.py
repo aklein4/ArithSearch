@@ -47,7 +47,7 @@ def log_cost(k):
     return np.sum(np.ceil(np.log2(1+np.abs(k))))
 
 
-def generalized_horners(poly, verbose:bool=False, mem=None, sampling=None, early_stopping=None):
+def generalized_horners(poly, verbose:bool=False, mem=None, sampling=None, early_stopping=None, care_about_add=True):
     if mem is None:
         mem = set()
 
@@ -65,16 +65,17 @@ def generalized_horners(poly, verbose:bool=False, mem=None, sampling=None, early
 
     n = list(group)[0].a.size
 
-    def get_clean(s: set, meem=mem):
+    def get_clean(s: set, meem=mem, caar=care_about_add):
         clean = set()
         ms = 0
         for k in s:
             if np.sum(k.a) > 1 and k not in meem:
                 clean.add(k)
-            elif np.sum(k.a) == 1:
-                ms += 2
-            else:
-                ms += 1
+            elif caar:
+                if np.sum(k.a) == 1:
+                    ms += 2
+                else:
+                    ms += 1
         return clean, ms
 
     def get_reduced(s: set, d: np.ndarray):
@@ -201,9 +202,9 @@ def generalized_horners(poly, verbose:bool=False, mem=None, sampling=None, early
             continue
 
         if len(curr_group) > 1 or list(curr_group)[0] not in mem:
-            cost += generalized_horners(curr_group, verbose=verbose, mem=mem, sampling=sampling, early_stopping=(None if early_stopping is None else early_stopping-cost))
+            cost += generalized_horners(curr_group, verbose=verbose, mem=mem, sampling=sampling, early_stopping=(None if early_stopping is None else early_stopping-cost), care_about_add=care_about_add)
         else:
-            cost += 1
+            cost += 1 if care_about_add and sum(list(curr_group)[0]) > 0 else 0
 
         for m in savers:
             mem.add(m)
@@ -234,13 +235,13 @@ def generalized_horners(poly, verbose:bool=False, mem=None, sampling=None, early
     return cost
 
 
-def stochastic_horners(poly, iters, gamma, verbose=False):
+def stochastic_horners(poly, iters, gamma, verbose=False, care_about_add=True):
 
-    non_stoch_sol = generalized_horners(poly)
+    non_stoch_sol = generalized_horners(poly, care_about_add=care_about_add)
     best_solution = non_stoch_sol
 
     for iter in range(iters):
-        sol = generalized_horners(poly, sampling=gamma)
+        sol = generalized_horners(poly, sampling=gamma, care_about_add=care_about_add)
         if sol < best_solution:
             best_solution = sol
         if verbose:
@@ -404,7 +405,7 @@ def main():
 
     target = SparsePoly(5)
     more = 1000
-    while more > 0:
+    for m in range(more):
         k = tuple([random.randrange(10) for i in range(5)])
         target.dict[k] = 1
         more -= sum(k)
@@ -418,7 +419,7 @@ def main():
     horner = multivar_horner.HornerMultivarPolynomial(coefs, keys, rectify_input=True, keep_tree=True)
     print("got horner...\n")
 
-    cost = stochastic_horners(target, 10, 5, verbose=True)
+    cost = stochastic_horners(target, 0, 5, verbose=True, care_about_add=True)
 
     # print(target, '\n')
     # print("Multiplication Focussed:")
@@ -440,6 +441,8 @@ def main():
     print("Horner Computation:", claim)
     #print(tree)
     print("")
+
+    print(target)
 
     exit()
 
