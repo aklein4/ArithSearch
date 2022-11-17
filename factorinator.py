@@ -13,6 +13,8 @@ class Nom:
         self.a = a
     def __hash__(self):
         return hash(str(self.a))
+    def __eq__(self, other):
+        return np.array_equal(self.a, other.a)
 
 
 COST_SAVE_ITERS = 10
@@ -71,10 +73,10 @@ def generalized_horners(poly, verbose:bool=False, mem=None, sampling=None, early
         for k in s:
             if np.sum(k.a) > 1 and k not in meem:
                 clean.add(k)
-            elif caar:
-                if np.sum(k.a) == 1:
-                    ms += 2
-                else:
+            else:
+                if np.sum(k.a) >= 1:
+                    ms += 1
+                if caar:
                     ms += 1
         return clean, ms
 
@@ -91,7 +93,7 @@ def generalized_horners(poly, verbose:bool=False, mem=None, sampling=None, early
     group, cost = get_clean(group)
 
     if len(group) == 0:
-        return max(cost - 1, 0) # fencepost of addition
+        return max(cost - 1, 0) if care_about_add else cost # fencepost of addition
 
     # k_list = list(group)
     # k_list.sort(reverse=True, key=lambda k: np.sum(k))
@@ -111,65 +113,68 @@ def generalized_horners(poly, verbose:bool=False, mem=None, sampling=None, early
     #     if not found:
     #         commons.append(k)
 
+    constraints = np.amax(np.stack([nom.a for nom in group]), axis=0)
+
     commons = []
     for i in range(n):
-        check = np.zeros(n)
-        check[i] = 1
-        commons.append(check)
-    
-    commons += [m.a for m in mem]
+        for m in range(1, int(constraints[i])+1):
+            check = np.zeros(n)
+            check[i] = m
+            if np.min(check - constraints) <= 0:
+                commons.append(check)
+    for m in mem:
+        if np.min(m.a - constraints) <= 0:
+            commons.append(m.a)
 
-    groups = [set() for _ in range(len(commons))]
-    while len(group) > 0:
-        counts = [0 for _ in range(len(commons))]
-        for k in group:
-            for g in range(len(counts)):
-                diff = k.a - commons[g]
-                if np.min(diff) >= 0:
-                    # sq_diff = tuple([diff[_]**2 for _ in range(len(diff))])
-                    # score = 1/(1+sum(sq_diff))
-                    # derv = tuple([0 if commons[g][_] == 0 else k[_] for _ in range(len(k))])
-                    counts[g] += np.sum(commons[g])
-        highest = counts.index(max(counts))
+    if len(commons) == 0:
+        raise RuntimeError("Empty constrained common denominator groups.")
+
+    groups = None
+    best_groups_cost = None
+    master_group = group.copy()
+    for iter in range(1 if sampling is None else 5):
+        group = master_group.copy()
+        trial_groups = [set() for _ in range(len(commons))]
+        while len(group) > 0:
+
+            weights = [0 for _ in range(len(commons))]
+            perfects = [0 for _ in range(len(commons))]
+            for g in range(len(weights)):
+                score = np.log2(float(1+np.sum(commons[g])))
+                found = 0
+                for k in group:
+                    diff = k.a - commons[g]
+                    if np.min(diff) >= 0:
+                        weights[g] += score
+                        found += 1
+                if found == len(group):
+                    perfects[g] = weights[g]
+
+            if sum(perfects) > 0:
+                weights = perfects
+
+            highest = weights.index(max(weights))
+            if sum(perfects) == 0 and not sampling is None:
+                highest = random.choices([i for i in range(len(weights))], weights=[w**sampling for w in weights], k=1)[0]
+
+            for k in group.copy():
+                diff = k.a - commons[highest]
+                if min(diff) >= 0:
+                    trial_groups[highest].add(k)
+                    group.remove(k)
+    
+        overall_cost = 0
         if not sampling is None:
-            highest = random.choices([i for i in range(len(counts))], weights=[w**sampling for w in counts], k=1)[0]
-        for k in group.copy():
-            diff = k.a - commons[highest]
-            if min(diff) >= 0:
-                groups[highest].add(k)
-                group.remove(k)
+            for gro in trial_groups:
+                if len(gro) > 0:
+                    overall_cost += np.sum(np.var(np.stack([k.a for k in gro]), axis=0))
 
+        if groups is None or overall_cost < best_groups_cost:
+            groups = trial_groups
+            best_groups_cost = overall_cost
 
-    # groups = [set() for _ in range(len(commons))]
-    # for k in k_list:
-    #     best = None
-    #     best_score = None
-    #     sample_inds = []
-    #     sample_weights = []
-
-    #     for g in range(len(commons)):
-    #         diff = tuple([(k[_]-commons[g][_]) for _ in range(len(k))])
-    #         if min(diff) < 0:
-    #             continue
-    #         sq_diff = tuple([diff[_]**2 for _ in range(len(diff))])
-    #         score = sum(sq_diff)
-    #         if not sampling is None:
-    #             sample_inds.append(g)
-    #             sample_weights.append(1/(.1+score)**sampling)
-    #         if best == None or score < best_score:
-    #             best = g
-    #             best_score = score
-
-    #     if best == None:
-    #         raise RuntimeError("Unfound common denominator: " + str(k) + " not in " + str(commons))
-    #     else:
-    #         if not sampling is None:
-    #             groups[random.choices(sample_inds, weights=sample_weights, k=1)[0]].add(k)
-    #         else:
-    #             groups[best].add(k)
-    
     order = [i for i in range(len(groups))]
-    order.sort(key=lambda x: len(groups[x]))
+    order.sort(reverse=True, key=lambda x: len(groups[x]))
     for g in order:
 
         curr_group = groups[g]
@@ -178,12 +183,13 @@ def generalized_horners(poly, verbose:bool=False, mem=None, sampling=None, early
         if len(curr_group) == 0:
             continue
 
-        needed = curr_d
+        # verbose info
         if len(curr_group) > 1:
             if verbose:
-                print(commons)
-                print(curr_group, "-->", curr_d, '\n')
+                # print(commons)
+                print(tuple(curr_d))
 
+        # save every length 1 group that we find
         savers = set()
         if len(curr_group) == 1:
             savers.add(list(curr_group)[0])
@@ -198,36 +204,14 @@ def generalized_horners(poly, verbose:bool=False, mem=None, sampling=None, early
         if len(curr_group) == 1:
             savers.add(list(curr_group)[0])
 
-        elif len(curr_group) == 0:
-            continue
-
-        if len(curr_group) > 1 or list(curr_group)[0] not in mem:
+        if len(curr_group) != 0:
             cost += generalized_horners(curr_group, verbose=verbose, mem=mem, sampling=sampling, early_stopping=(None if early_stopping is None else early_stopping-cost), care_about_add=care_about_add)
-        else:
-            cost += 1 if care_about_add and sum(list(curr_group)[0]) > 0 else 0
 
         for m in savers:
             mem.add(m)
 
-        # else:
-        #     needed = list(curr_group)[0]
-
-        # if needed not in mem:
-        #     for trial in range(1):
-        #         best_diff = log_cost(needed)
-        #         best_tup = needed
-        #         for m in mem:
-        #             diff = tuple([(needed[_]-m[_]) for _ in range(len(m))])
-        #             if min(diff) < 0:
-        #                 continue
-        #             if 1+log_cost(diff) < best_diff:
-        #                 best_diff = 1+log_cost(diff)
-        #                 best_tup = m
-        #         cost += best_diff
-        #         needed = tuple([needed[i] - best_tup[i] for i in range(len(needed))])
-        #         mem.add(needed)
-        #         if sum(needed) == 0:
-        #             break
+        if np.sum(curr_d) > 1 and Nom(curr_d) not in mem:
+            cost += generalized_horners(set([Nom(curr_d)]), verbose=verbose, mem=mem, sampling=sampling, early_stopping=(None if early_stopping is None else early_stopping-cost), care_about_add=care_about_add)
 
         if not early_stopping is None and cost >= early_stopping:
             return early_stopping + 1
@@ -403,10 +387,10 @@ def main():
     target[17, 13, 14] = 1
     target *= target
 
-    target = SparsePoly(5)
-    more = 1000
+    target = SparsePoly(10)
+    more = 100
     for m in range(more):
-        k = tuple([random.randrange(10) for i in range(5)])
+        k = tuple([random.randrange(10) for i in range(10)])
         target.dict[k] = 1
         more -= sum(k)
     print("running...")
@@ -416,10 +400,12 @@ def main():
     for k in target.dict.keys():
         coefs.append(target[k])
         keys.append(k)
-    horner = multivar_horner.HornerMultivarPolynomial(coefs, keys, rectify_input=True, keep_tree=True)
+    horner = multivar_horner.HornerMultivarPolynomialOpt(coefs, keys, rectify_input=True, keep_tree=True)
     print("got horner...\n")
 
-    cost = stochastic_horners(target, 0, 5, verbose=True, care_about_add=True)
+    my_mem = set()
+    cost = generalized_horners(target, verbose=False, care_about_add=False, mem=my_mem)
+    print([tuple(m.a) for m in my_mem])
 
     # print(target, '\n')
     # print("Multiplication Focussed:")
@@ -435,14 +421,11 @@ def main():
 
     claim = horner.num_ops
     tree = str(horner.factorisation_tree)
-    for i in range(len(tree)):
-        if tree[i] == '^':
-            claim += np.ceil(np.log2(float(tree[i+1])))
     print("Horner Computation:", claim)
-    #print(tree)
+    # print(tree)
     print("")
 
-    print(target)
+    #print(target)
 
     exit()
 
