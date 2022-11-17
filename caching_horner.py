@@ -89,7 +89,7 @@ def singlet(s: set):
     return list(s)[0]
 
 
-def caching_horners(poly: SparsePoly, verbose:bool=False, care_about_add=True, max_mem=1000, expensive_heuristic=False):
+def caching_horners(poly: SparsePoly, verbose:bool=False, care_about_add=True, max_mem=1000, expensive_heuristic=False, div_init_mem=True):
     n = poly.n
 
     problem = set()
@@ -120,7 +120,7 @@ def caching_horners(poly: SparsePoly, verbose:bool=False, care_about_add=True, m
             mem_str.add(tuple(k))
 
     for i in range(n):
-        for m in range(1, 1+round(np.ceil(poly.max_order()/2))):
+        for m in range(1, 1+round(np.ceil(poly.max_order()/(2 if div_init_mem else 1)))):
             mon = np.zeros(n, dtype=np.int32)
             mon[i] = m
             mem_update(Nom(mon))
@@ -176,12 +176,15 @@ def caching_horners(poly: SparsePoly, verbose:bool=False, care_about_add=True, m
         if verbose:
             if len(curr_group) > 1:
                 num_left = sum([len(g.s) for g in groups]) + len(curr_group)
-                print("Nomials Remaining:", num_left, "("+str(len(curr_group))+")", " --  Cost:", cost, " --  Memory Size:", len(mem), " --  Est. Time Left:", round(num_left * (time.time()-init_time)/(1+init_size-num_left)), "s")
+                p_left = sum([sum([sum(elem.priv) for elem in g.s]) for g in groups]) + sum([sum(elem.priv) for elem in curr_group])
+                print("Nomials Remaining:", num_left, '&', p_left, "("+str(len(curr_group))+' & '+str(sum([sum(elem.priv) for elem in curr_group]))+")", " --  Cost:", cost, " --  Memory Size:", len(mem), " --  Est. Time Left:", round(num_left * (time.time()-init_time)/(1+init_size-num_left)), "s")
                 # print("\n----\n")
                 # print([tuple(k.pub) for k in curr_group], '\n')
                 # print([tuple(k.priv) for k in curr_group], '\n')
 
         common_list = [mem[m].s for m in range(min(len(mem), max_mem))]
+        # if len(common_list) < max_mem and len(mem) > 0:
+        #     common_list += [mem[m].s for m in range(min(len(mem), len(common_list)-max_mem))]
 
         weights = [0 for _ in range(len(common_list))]
         # perfects = [0 for _ in range(len(common_list))]
@@ -227,7 +230,15 @@ def caching_horners(poly: SparsePoly, verbose:bool=False, care_about_add=True, m
                 cost += 1
             heapq.heappush(groups, get_prioritized_group(keep))
         
+        bef = None
+        if verbose:
+            bef = sum([sum(elem.priv) for elem in reduce])
         after_reduce = clean(reduce, common)
+
+        if verbose:
+            if len(curr_group) > 1:
+                aft = sum([sum(elem.priv) for elem in after_reduce])
+                print(" -> Common Denominator:", tuple(common), " -- Reduction Sum:", bef, " -- After Sum:", aft)
 
         if len(after_reduce) > 0:
             heapq.heappush(groups, get_prioritized_group(after_reduce))
@@ -252,9 +263,9 @@ def main():
     # target *= target
 
     target = SparsePoly(15)
-    more = 100000
+    more = 50000
     while more > 0:
-        k = tuple([random.randrange(30) for i in range(15)])
+        k = tuple([random.randrange(40) for i in range(15)])
         target.dict[k] = 1
         more -= sum(k)
     print("running...")
@@ -269,11 +280,9 @@ def main():
 
     # print(horner.num_ops)
 
-    cost = caching_horners(target, verbose=True, care_about_add=False)
-    cost_test = caching_horners(target, verbose=True, care_about_add=False, expensive_heuristic=True)
+    cost = caching_horners(target, verbose=True, care_about_add=False, expensive_heuristic=True)
 
     print(" --> Cost:", cost)
-    print(" --> Test:", cost_test)
     print("")
 
     print("Naive Estimate:", sum([1+np.sum(np.maximum(0, np.array(k)-1)) for k in target.dict.keys()]))
