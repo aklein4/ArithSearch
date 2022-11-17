@@ -89,7 +89,7 @@ def singlet(s: set):
     return list(s)[0]
 
 
-def caching_horners(poly: SparsePoly, verbose:bool=False, care_about_add=True, max_mem=200):
+def caching_horners(poly: SparsePoly, verbose:bool=False, care_about_add=True, max_mem=1000, expensive_heuristic=False):
     n = poly.n
 
     problem = set()
@@ -137,8 +137,8 @@ def caching_horners(poly: SparsePoly, verbose:bool=False, care_about_add=True, m
 
         if np.sum(d) > 0:
             cost += 1
-        for k in s:
-            k.sub(d)
+            for k in s:
+                k.sub(d)
         # for k in s:
         #     if not k.valid_target():
         #         for m in mem:
@@ -168,7 +168,8 @@ def caching_horners(poly: SparsePoly, verbose:bool=False, care_about_add=True, m
     init_size = len(groups[0].s)
     init_time = time.time()
     while len(groups) > 0:
-        curr_group = clean(heapq.heappop(groups).s)
+        before = heapq.heappop(groups).s
+        curr_group = clean(before)
         if len(curr_group) == 0:
             continue
 
@@ -195,7 +196,7 @@ def caching_horners(poly: SparsePoly, verbose:bool=False, care_about_add=True, m
             for k in curr_group:
                 diff = k.priv - common_list[g]
                 if np.min(diff) >= 0:
-                    weights[g] += score
+                    weights[g] +=  score if not expensive_heuristic else np.sum(common_list[g] / np.maximum(1, k.priv)**(0.5))
 
                     if check_sol and tuple(diff) in mem_str:
                         found_sols += 1
@@ -250,10 +251,10 @@ def main():
     # target[17, 13, 14] = 1
     # target *= target
 
-    target = SparsePoly(5)
+    target = SparsePoly(15)
     more = 100000
     while more > 0:
-        k = tuple([random.randrange(20) for i in range(5)])
+        k = tuple([random.randrange(30) for i in range(15)])
         target.dict[k] = 1
         more -= sum(k)
     print("running...")
@@ -263,14 +264,16 @@ def main():
     for k in target.dict.keys():
         coefs.append(target[k])
         keys.append(k)
-    horner = multivar_horner.HornerMultivarPolynomial(coefs, keys, rectify_input=True, keep_tree=True)
+    horner = multivar_horner.HornerMultivarPolynomialOpt(coefs, keys, rectify_input=True, keep_tree=True)
     print("got horner...\n")
 
-    print(horner.num_ops)
+    # print(horner.num_ops)
 
     cost = caching_horners(target, verbose=True, care_about_add=False)
+    cost_test = caching_horners(target, verbose=True, care_about_add=False, expensive_heuristic=True)
 
     print(" --> Cost:", cost)
+    print(" --> Test:", cost_test)
     print("")
 
     print("Naive Estimate:", sum([1+np.sum(np.maximum(0, np.array(k)-1)) for k in target.dict.keys()]))
