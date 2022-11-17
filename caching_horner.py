@@ -8,7 +8,7 @@ import numpy as np
 from dataclasses import dataclass, field
 import heapq
 import random
-
+import time
 
 def log_cost(k):
     return np.sum(np.ceil(np.log2(1+np.abs(k))))
@@ -23,6 +23,17 @@ def get_prioritized_group(s: set):
     return PrioritizedGroup(
         sum([np.sum(k.pub) for k in s]),
         s
+    )
+
+@dataclass(order=True)
+class PrioritizedMem:
+    priority: float = field(compare=True)
+    s: np.ndarray = field(compare=False)
+
+def get_prioritized_mem(k: np.ndarray):
+    return PrioritizedMem(
+        np.sum(k),
+        k
     )
 
 class Nom:
@@ -78,7 +89,7 @@ def singlet(s: set):
     return list(s)[0]
 
 
-def caching_horners(poly: SparsePoly, verbose:bool=False, care_about_add=True):
+def caching_horners(poly: SparsePoly, verbose:bool=False, care_about_add=True, max_mem=200):
     n = poly.n
 
     problem = set()
@@ -92,20 +103,21 @@ def caching_horners(poly: SparsePoly, verbose:bool=False, care_about_add=True):
     heapq.heapify(groups)
     heapq.heappush(groups, get_prioritized_group(problem))
 
-    mem = [np.zeros(n, dtype=np.int32)]
-    mem_str = set([str(np.zeros(n, dtype=np.int32))])
+    mem = [get_prioritized_mem(np.zeros(n, dtype=np.int32))]
+    heapq.heapify(mem)
+    mem_str = set([tuple(np.zeros(n, dtype=np.int32))])
 
     def mem_update(nommer: Nom):
         nonlocal groups
         nonlocal mem
         k = nommer.priv.copy()
 
-        if str(k) not in mem_str:
+        if tuple(k) not in mem_str:
             # for group in groups:
             #     for p in group.s:
             #         p.check(k)
-            mem.append(k)
-            mem_str.add(str(k))
+            heapq.heappush(mem, get_prioritized_mem(k))
+            mem_str.add(tuple(k))
 
     for i in range(n):
         for m in range(1, 1+round(np.ceil(poly.max_order()/2))):
@@ -139,7 +151,7 @@ def caching_horners(poly: SparsePoly, verbose:bool=False, care_about_add=True):
         kept = set()
         fence = False
         for k in s.copy():
-            if str(k.priv) in mem_str or sum(k.priv) <= 1:
+            if tuple(k.priv) in mem_str or sum(k.priv) <= 1:
                 if np.sum(k.priv) >= 1:
                     cost += 1
                 if care_about_add and fence:
@@ -153,19 +165,22 @@ def caching_horners(poly: SparsePoly, verbose:bool=False, care_about_add=True):
 
         return kept
 
-
+    init_size = len(groups[0].s)
+    init_time = time.time()
     while len(groups) > 0:
         curr_group = clean(heapq.heappop(groups).s)
         if len(curr_group) == 0:
             continue
 
         if verbose:
-            print("Nomials Remaining:", sum([len(g.s) for g in groups]) + len(curr_group), "("+str(len(curr_group))+")", " --  Cost:", cost)
-            # print("\n----\n")
-            # print([tuple(k.pub) for k in curr_group], '\n')
-            # print([tuple(k.priv) for k in curr_group], '\n')
+            if len(curr_group) > 1:
+                num_left = sum([len(g.s) for g in groups]) + len(curr_group)
+                print("Nomials Remaining:", num_left, "("+str(len(curr_group))+")", " --  Cost:", cost, " --  Memory Size:", len(mem), " --  Est. Time Left:", round(num_left * (time.time()-init_time)/(1+init_size-num_left)), "s")
+                # print("\n----\n")
+                # print([tuple(k.pub) for k in curr_group], '\n')
+                # print([tuple(k.priv) for k in curr_group], '\n')
 
-        common_list = mem.copy()
+        common_list = [mem[m].s for m in range(min(len(mem), max_mem))]
 
         weights = [0 for _ in range(len(common_list))]
         # perfects = [0 for _ in range(len(common_list))]
@@ -173,12 +188,21 @@ def caching_horners(poly: SparsePoly, verbose:bool=False, care_about_add=True):
             if np.sum(common_list[g]) == 0:
                 continue
 
+            found_sols = 0
             score = np.sum(common_list[g])
+            check_sol = len(mem) >= len(curr_group)
             # found = 0
             for k in curr_group:
                 diff = k.priv - common_list[g]
                 if np.min(diff) >= 0:
                     weights[g] += score
+
+                    if check_sol and tuple(diff) in mem_str:
+                        found_sols += 1
+
+            if found_sols == len(curr_group):
+                break
+
             #         found += 1
             # if found == len(curr_group):
             #     perfects[g] = weights[g]
@@ -227,10 +251,11 @@ def main():
     # target *= target
 
     target = SparsePoly(5)
-    more = 200
-    for m in range(more):
+    more = 100000
+    while more > 0:
         k = tuple([random.randrange(20) for i in range(5)])
         target.dict[k] = 1
+        more -= sum(k)
     print("running...")
 
     coefs = []
@@ -238,9 +263,10 @@ def main():
     for k in target.dict.keys():
         coefs.append(target[k])
         keys.append(k)
-    horner = multivar_horner.HornerMultivarPolynomialOpt(coefs, keys, rectify_input=True, keep_tree=True)
+    horner = multivar_horner.HornerMultivarPolynomial(coefs, keys, rectify_input=True, keep_tree=True)
     print("got horner...\n")
 
+    print(horner.num_ops)
 
     cost = caching_horners(target, verbose=True, care_about_add=False)
 
@@ -250,6 +276,10 @@ def main():
     print("Naive Estimate:", sum([1+np.sum(np.maximum(0, np.array(k)-1)) for k in target.dict.keys()]))
 
     claim = horner.num_ops
+    tree = str(horner.factorisation_tree)
+    # for i in range(len(tree)):
+    #     if tree[i] == '^':
+    #         claim -= int(tree[i+1])-1
     print("Horner Computation:", claim)
     # print(horner.factorisation_tree)
 
