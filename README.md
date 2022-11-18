@@ -9,12 +9,12 @@ For the polynomial:
 The lowest possible number of multiplications using basic_horner (without intermediate variables) is 34, with the order of (c, b, a):
 
  --- Regular --- <br />
-(0, 1, 2) --> 38<br />
-(0, 2, 1) --> 35<br />
-(1, 0, 2) --> 37<br />
-(1, 2, 0) --> 35<br />
-(2, 0, 1) --> 33<br />
-(2, 1, 0) --> 34
+(a, b, c) --> 38<br />
+(a, c, b) --> 35<br />
+(b, a, c) --> 37<br />
+(b, c, a) --> 35<br />
+(c, a, b) --> 33<br />
+(c, b, a) --> 34
 
 Using caching_horner (without intermediate variables), a solution of cost 30 was found:
 
