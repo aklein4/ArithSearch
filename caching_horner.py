@@ -19,7 +19,7 @@ def singlet(s: set):
     # Get the 'first' element in set
     return list(s)[0]
 
-    
+
 @dataclass(order=True)
 class PrioritizedGroup:
     # wrapper for set with priority
@@ -359,12 +359,14 @@ def main():
     # target *= target
 
     # generate some big random polynomial
-    target = SparsePoly(15)
+    N = 15
+    scale = 5
+    target = SparsePoly(N)
     more = 10000
     while more > 0:
-        k = tuple([random.randrange(40) for i in range(15)])
-        target.dict[k] = 1
-        more -= sum(k)
+        k = np.round_(np.random.exponential(scale=scale, size=N)).astype(np.int32)
+        target[k] = 1
+        more -= np.sum(k)
     print("created problem...")
 
     # use lib to get benchmark
