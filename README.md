@@ -6,7 +6,7 @@ For the polynomial:
 
 3a + 5a^3bc^3 + 7b^2c + 11a^3c^4 + 13ab^2c + 17abc^2 + 19a^2c^2 + 23a^5b^2c^2 + 29b^5c^4 + 31ab^5c
 
-The lowest possible number of multiplications using basic_horner (without intermediate variables) is 34, with the order of (c, b, a):
+The lowest possible number of multiplications using the regular Horner's scheme, basic_horner (without intermediate variables), is 34, with the order of (c, b, a):
 
  --- Regular --- <br />
 (a, b, c) --> 38<br />
@@ -16,7 +16,7 @@ The lowest possible number of multiplications using basic_horner (without interm
 (c, a, b) --> 33<br />
 (c, b, a) --> 34
 
-Using caching_horner (without intermediate variables), a solution of cost 30 was found:
+Using the improved version, caching_horner (without intermediate variables), a solution of cost 30 was found:
 
  --- Improved --- <br />
 None --> 30
