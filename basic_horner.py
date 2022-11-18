@@ -1,7 +1,7 @@
 
 from sparse_poly import SparsePoly
 
-from div_search import div_search
+from div_search import DivSearch
 
 import numpy as np
 from itertools import permutations
@@ -84,7 +84,7 @@ def main():
         print(tuple(ord), "-->", basic_horners(target, ord))
 
     print(" --- Improved --- ")
-    cost = div_search(target, verbose=False, test=True)
+    cost = DivSearch(target, verbose=False, test=True)
     print(cost, '\n')
 
     print(target)
