@@ -1,6 +1,5 @@
 
-from sparse_poly import SparsePoly, LETTERS, poly_MSE
-from circuit import OpInfo, OPERATIONS
+from sparse_poly import SparsePoly, LETTERS
 
 import multivar_horner
 
@@ -109,7 +108,7 @@ class Nom:
         return np.array_equal(self.priv, other.priv)
 
 
-def caching_horners(poly: SparsePoly, verbose:bool=False, care_about_add=False, max_mem=2000, expensive_heuristic=True, div_init_mem=True, analyze_ones=False):
+def caching_horners(poly: SparsePoly, verbose:bool=False, care_about_add=False, max_mem=2000, expensive_heuristic=True, div_init_mem=True, analyze_ones=False, test=False):
     """
     Create a multivariate horner scheme of the polynomial with aggresive CSE and recursive sub-polynomial optimization.
     
@@ -144,30 +143,35 @@ def caching_horners(poly: SparsePoly, verbose:bool=False, care_about_add=False, 
     heapq.heappush(groups, get_prioritized_group(problem))
 
     # list of all found and chached/memoized monomials, sorted smallest to largest
-    mem = [get_prioritized_mem(np.zeros(n, dtype=np.int32))]
+    mem_base = [get_prioritized_mem(np.zeros(n, dtype=np.int32))]
+    mem = []
     heapq.heapify(mem)
     # set of all found monomials, represented as tuples
     mem_str = set([tuple(np.zeros(n, dtype=np.int32))])
 
-    def mem_update(nommer: Nom):
+    def mem_update(nommer: Nom, base=False):
         # Add a monomial to mem.
         nonlocal groups
         nonlocal mem
+        nonlocal test
 
         k = nommer.priv.copy()
-        if tuple(k) not in mem_str:
+        if tuple(k) not in mem_str and (base or not test):
             # for group in groups:
             #     for p in group.s:
             #         p.check(k)
-            heapq.heappush(mem, get_prioritized_mem(k))
+            if not base:
+                heapq.heappush(mem, get_prioritized_mem(k))
+            else:
+                mem_base.append(get_prioritized_mem(k))
             mem_str.add(tuple(k))
 
     # initialize mem with all the singe-variable monomials up to some order
     for i in range(n):
-        for m in range(1, 1+round(np.ceil(poly.max_order()/(2 if div_init_mem else 1)))):
+        for m in range(1, 2 if test else 1+round(np.ceil(poly.max_order()/(2 if div_init_mem else 1)))):
             mon = np.zeros(n, dtype=np.int32)
             mon[i] = m
-            mem_update(Nom(mon))
+            mem_update(Nom(mon), base=True)
             cost += 1 if m > 1 else 0
 
     def clean(s: set, d: np.ndarray=np.zeros(n, dtype=np.int32)):
@@ -205,7 +209,7 @@ def caching_horners(poly: SparsePoly, verbose:bool=False, care_about_add=False, 
         for k in s.copy():
             if tuple(k.priv) in mem_str or sum(k.priv) <= 1:
                 # is known
-                if np.sum(k.priv) >= 1:
+                if np.sum(k.priv) >= 1: # and not test:
                     # this is not a scalar, so take into account coefficient
                     cost += 1
                 if care_about_add and fence:
@@ -236,13 +240,16 @@ def caching_horners(poly: SparsePoly, verbose:bool=False, care_about_add=False, 
         
         # print stuff
         if verbose:
-            if len(curr_group) > 1:
+            if len(curr_group) > 1 or test:
                 num_left = sum([len(g.s) for g in groups]) + len(curr_group)
                 p_left = sum([sum([sum(elem.priv) for elem in g.s]) for g in groups]) + sum([sum(elem.priv) for elem in curr_group])
                 print("Remaining:", num_left, '&', p_left, "("+str(len(curr_group))+' & '+str(sum([sum(elem.priv) for elem in curr_group]))+")", " --  Cost:", cost, " --  Memory Size:", len(mem), " --  Est. Time Left:", round(num_left * (time.time()-init_time)/(1+init_size-num_left)), "s")
 
         # list of common denominators that we will check
-        common_list = [mem[m].s for m in range(min(len(mem), max_mem))]
+        common_list = [mem_base[m].s for m in range(min(len(mem_base), max_mem))]
+        if len(common_list) < max_mem:
+            common_list += [mem[m].s for m in range(min(len(mem), max_mem-len(common_list)))]
+
         # weights of how good each common denom is
         weights = [0 for _ in range(len(common_list))]
 
@@ -331,7 +338,7 @@ def caching_horners(poly: SparsePoly, verbose:bool=False, care_about_add=False, 
 
         # verbose stuff
         if verbose:
-            if len(curr_group) > 1:
+            if len(curr_group) > 1 or test:
                 aft = (sum([sum(elem.priv) for elem in after_reduce]), len(after_reduce))
                 print(" -> Common:", tuple(common), " -- Reduction:", bef[1], '&', bef[0], " -- After:", aft[1], '&', aft[0])
 
@@ -359,10 +366,10 @@ def main():
     # target *= target
 
     # generate some big random polynomial
-    N = 15
-    scale = 5
+    N = 5
+    scale = 3
     target = SparsePoly(N)
-    more = 10000
+    more = 1000
     while more > 0:
         k = np.round_(np.random.exponential(scale=scale, size=N)).astype(np.int32)
         target[k] = 1
@@ -379,11 +386,11 @@ def main():
     print("created benchmark...\n")
 
     # get solution using our method
-    cost = caching_horners(target, verbose=True, care_about_add=False, expensive_heuristic=True)
-    # test_cost = caching_horners(target, verbose=True, care_about_add=False, expensive_heuristic=True, analyze_ones=True)
+    cost = caching_horners(target, verbose=False)
+    test_cost = caching_horners(target, verbose=False, test=True)
 
-    print(" --> Cost:", cost)
-    # print(" --> Cost:", test_cost)
+    print("\n --> Cost:", cost)
+    print(" --> Test Cost:", test_cost)
     print("")
 
     # the most basic representation just multiplies and adds every monomial one by one
@@ -391,10 +398,30 @@ def main():
 
     # show the benchmark
     print("Horner Computation:", horner.num_ops)
-    # print(horner.factorisation_tree)
+    og_tree = str(horner.factorisation_tree)
+    fixed_tree = ""
+    i = 0
+    while i < len(og_tree):
+        if og_tree[i] == '_':
+            fixed_tree = fixed_tree[:-1]
+            num = ""
+            while True:
+                i += 1
+                try:
+                    check = int(og_tree[i])
+                    num += og_tree[i]
+                except:
+                    fixed_tree += LETTERS[int(num)]
+                    break
+        else:
+            fixed_tree += og_tree[i]
+            i += 1
+    # print(fixed_tree)
+
+    print()
 
     # show the polynomial we computed
-    print(target)
+    # print(target)
     print("")
 
 
