@@ -108,7 +108,7 @@ class Nom:
         return np.array_equal(self.priv, other.priv)
 
 
-def caching_horners(poly: SparsePoly, verbose:bool=False, care_about_add=False, max_mem=2000, expensive_heuristic=True, div_init_mem=True, analyze_ones=False, test=False):
+def div_search(poly: SparsePoly, verbose:bool=False, care_about_add=False, max_mem=2000, expensive_heuristic=True, div_init_mem=True, analyze_ones=False, test=False):
     """
     Create a multivariate horner scheme of the polynomial with aggresive CSE and recursive sub-polynomial optimization.
     
@@ -386,8 +386,8 @@ def main():
     print("created benchmark...\n")
 
     # get solution using our method
-    cost = caching_horners(target, verbose=False)
-    test_cost = caching_horners(target, verbose=False, test=True)
+    cost = div_search(target, verbose=False)
+    test_cost = div_search(target, verbose=False, test=True)
 
     print("\n --> Cost:", cost)
     print(" --> Test Cost:", test_cost)
