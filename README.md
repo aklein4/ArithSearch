@@ -1,12 +1,19 @@
 # ArithSearch
 
-### Caching Horner Proof of Superiority:
+### TODO
+
+1. Port sample_search and its wrappers, recursive_search and splitting_search, from c_star.py to C++.
+2. Make it DivSearch return visualizable solutions.
+3. Integrate stochastic methods (ex. sample_search) with DivSearch.
+4. Port DivSearch to C++.
+
+### DivSearch Proof of Superiority:
 
 For the polynomial:
 
 3a + 5a^3bc^3 + 7b^2c + 11a^3c^4 + 13ab^2c + 17abc^2 + 19a^2c^2 + 23a^5b^2c^2 + 29b^5c^4 + 31ab^5c
 
-The lowest possible number of multiplications using the regular Horner's scheme, basic_horner (without intermediate variables), is 34, with the order of (c, b, a):
+The lowest possible number of multiplications using regular Horner's scheme, basic_horner (without intermediate variables), is 34, with the order of (c, b, a):
 
  --- Regular --- <br />
 (a, b, c) --> 38<br />
@@ -16,7 +23,7 @@ The lowest possible number of multiplications using the regular Horner's scheme,
 (c, a, b) --> 33<br />
 (c, b, a) --> 34
 
-Using caching_horner (without intermediate variables), a solution of cost 30 was found:
+Using the improved Horner's scheme, DivSearch (without intermediate variables), a solution of cost 30 was found:
 
  --- Improved --- <br />
 None --> 30
