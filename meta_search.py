@@ -41,12 +41,13 @@ def get_prioritized_mem(k: np.ndarray):
 
 class MetaSearch:
 
-    def __init__(self, poly: SparsePoly, care_about_add: bool=False, disable_mem=False):
+    def __init__(self, poly: SparsePoly, care_about_add: bool=False, disable_mem=False, disable_cache=False):
         self.poly = poly
         self.n = poly.n
     
         self.care_about_add = care_about_add
         self.disable_mem = disable_mem
+        self.disable_cache = disable_cache
 
         self.mem_base = []
         self.mem = []
@@ -90,7 +91,7 @@ class MetaSearch:
             if base:
                 self.mem_set.add(tup)
                 self.mem_base.append(get_prioritized_mem(k))
-            elif not self.disable_mem:
+            elif not (self.disable_mem or self.disable_cache):
                 self.mem_set.add(tup)
                 heapq.heappush(self.mem, get_prioritized_mem(k))
 
@@ -305,7 +306,7 @@ class MetaSearch:
 
             accepted = False
             cost_delta = 0 if prev_cost is None else new_cost - prev_cost
-            if cost_delta <= 0 or random.random() < np.exp(max(-10, -cost_delta/temp)):
+            if cost_delta <= 0 or random.random() < np.exp(max(-20, -cost_delta/temp)):
                 accepted = True
                 if best_cost is None or new_cost < best_cost:
                     best_cost = new_cost
@@ -363,12 +364,16 @@ class MetaSearch:
                 print(" - Prev Cost:", new_cost)
 
         if save:
+            if verbose:
+                print("saving...")
             plt.clf()
             plt.scatter(range(len(c_list)), c_list)
             plt.xlabel("Trial")
             plt.ylabel("Cost")
             plt.title("MetaSearch with Randomize Trials")
             plt.savefig("random_out.png")
+            if verbose:
+                print("done")
 
         return best_cost
 
@@ -376,10 +381,10 @@ class MetaSearch:
 def main():
 
     # generate some big random polynomial
-    N = 5
+    N = 10
     scale = 3
     target = SparsePoly(N)
-    more = 100
+    more = 1000
     while more > 0:
         k = np.round_(np.random.exponential(scale=scale, size=N)).astype(np.int32)
         target[k] = 1
@@ -396,14 +401,14 @@ def main():
     print("created benchmark...\n")
 
     # get solution using our method
-    engine = MetaSearch(target, disable_mem=True)
+    engine = MetaSearch(target)
 
     print("\n --> Greedy Cost:", engine.greedySearch())
 
     t_start = time.time_ns()
-    cost = engine.annealSearch(1000, 1, 2, verbose=False)
+    cost = engine.annealSearch(500, 1, 10, 400, verbose=False, save=True)
 
-    print(" --> Cost:", cost, "("+str(round((time.time_ns() - t_start)*1e-9, 3))+" s)")
+    print(" --> Annealing Cost:", cost, "("+str(round((time.time_ns() - t_start)*1e-9, 3))+" s)")
     print("")
 
     # the most basic representation just multiplies and adds every monomial one by one
