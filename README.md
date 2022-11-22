@@ -13,7 +13,7 @@ For the polynomial:
 
  1a^2c^3 + 1a^5b^2c^12 + 1a^6b^3c^6 + 1a^10c + 1a^11 + 1a^4bc^11 + 1a^10b^3c^12 + 1a^5bc^10 + 1ab^11c^13 + 1a^6b^4
 
-The best cost that regular Horner's Scheme can find is 87 with an order of (c, a, b) - [note that for some reason some orders didn't run, but this can be redone]:
+The best cost that regular Horner's Scheme can find is 87 with an order of (c, a, b) - note that for some reason some orders didn't run, but this can be redone:
 
  --- Regular --- <br />
 (a, c, b) --> 93<br />
@@ -21,7 +21,7 @@ The best cost that regular Horner's Scheme can find is 87 with an order of (c, a
 (c, a, b) --> 87<br />
 (c, b, a) --> 96
 
-For MetaSearch, greedySearch with default parameters was able to find a solution with cost 114. Using annealSearch [5000 iterations, gamma=0.25, temp_start=10, temp_schedule=4000], a cost 76 solution was found. Using randomSearch [1000 iterations, gamma=0.25], a cost 84 solution was found.
+For MetaSearch, greedySearch with default parameters was able to find a solution with cost 114. Using annealSearch (5000 iterations, gamma=0.25, temp_start=10, temp_schedule=4000), a cost 76 solution was found. Using randomSearch (1000 iterations, gamma=0.25), a cost 84 solution was found.
 
 ![annealSearch output graph](./anneal_example.png)
 
