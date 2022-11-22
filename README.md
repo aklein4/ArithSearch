@@ -11,18 +11,17 @@
 
 For the polynomial:
 
-1ab^16c^7 + 1a^6b^2c + 1ac^10 + 1a^15b^10c^9 + 1a^18b^3c^16 + 1c^5 + 1a^2b^8c^8 + 1a^2b + 1a^5b^3c^10 + 1a^2b^9c
+ 1a^2c^3 + 1a^5b^2c^12 + 1a^6b^3c^6 + 1a^10c + 1a^11 + 1a^4bc^11 + 1a^10b^3c^12 + 1a^5bc^10 + 1ab^11c^13 + 1a^6b^4
 
-The best cost that regular Horner's Scheme can find is 117 with an order of (c, a, b) - [note that for some reason the order (b, c, a) wasn't run, but based on the (b, a, c) order it likely wouldn't be lower than 117]:
+The best cost that regular Horner's Scheme can find is 87 with an order of (c, a, b) - [note that for some reason some orders didn't run, but this can be redone]:
 
  --- Regular --- <br />
-(a, 1, 2) --> 128<br />
-(a, 2, 1) --> 129<br />
-(1, a, 2) --> 130<br />
-(2, a, 1) --> 117<br />
-(2, 1, a) --> 118
+(a, c, b) --> 93<br />
+(b, a, c) --> 117<br />
+(c, a, b) --> 87<br />
+(c, b, a) --> 96
 
-For MetaSearch, greedySearch with default parameters was able to find a solution with cost 105. Using annealSearch [5000 iterations, gamma=0.25, temp_start=100, temp_schedule=4000], a cost 93 solution was found. Using randomSearch [1000 iterations, gamma=0.25], a cost 99 solution was found.
+For MetaSearch, greedySearch with default parameters was able to find a solution with cost 114. Using annealSearch [5000 iterations, gamma=0.25, temp_start=10, temp_schedule=4000], a cost 76 solution was found. Using randomSearch [1000 iterations, gamma=0.25], a cost 84 solution was found.
 
 ![annealSearch output graph](./anneal_example.png)
 
