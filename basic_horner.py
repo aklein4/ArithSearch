@@ -95,7 +95,7 @@ def main():
     engine = MetaSearch(target, disable_mem=True)
     cost = engine.greedySearch()
     print("greedy -->", cost)
-    cost = engine.annealSearch(5000, 0.25, 100, 4000, save=True)
+    cost = engine.annealSearch(5000, 0.25, 10, 4000, save=True)
     print("annealing -->", cost)
     cost = engine.randomSearch(1000, 0.25, save=True)
     print("random -->", cost)
