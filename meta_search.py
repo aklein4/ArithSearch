@@ -336,7 +336,7 @@ class MetaSearch:
             plt.xlabel("Trial")
             plt.ylabel("Cost")
             plt.legend(["Rejected", "Accepted"])
-            plt.title("DivSearch with Simulated Annealing")
+            plt.title("MetaSearch with Simulated Annealing")
             plt.savefig("anneal_out.png")
 
         return best_cost
@@ -367,7 +367,7 @@ class MetaSearch:
             plt.scatter(range(len(c_list)), c_list)
             plt.xlabel("Trial")
             plt.ylabel("Cost")
-            plt.title("DivSearch with Randomize Trials")
+            plt.title("MetaSearch with Randomize Trials")
             plt.savefig("random_out.png")
 
         return best_cost
