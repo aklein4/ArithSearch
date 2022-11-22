@@ -2,6 +2,7 @@
 from sparse_poly import SparsePoly
 
 from div_search import DivSearch
+from meta_search import MetaSearch
 
 import numpy as np
 from itertools import permutations
@@ -73,9 +74,12 @@ def basic_horners(poly: SparsePoly, order):
 
 def main():
     N = 3
+    SCALE = 5
+    ELEMS = 10
+
     target = SparsePoly(N)
-    for i in range(10):
-        k = np.round_(np.random.exponential(scale=3, size=N)).astype(np.int32)
+    for i in range(ELEMS):
+        k = np.round_(np.random.exponential(scale=SCALE, size=N)).astype(np.int32)
         target[k] = 1
 
     orders = list(permutations(range(N)))
@@ -83,11 +87,20 @@ def main():
     for ord in orders:
         print(tuple(ord), "-->", basic_horners(target, ord))
 
-    print(" --- Improved --- ")
-    cost = DivSearch(target, verbose=False, test=True)
-    print(cost, '\n')
+    # print("\n --- Improved --- ")
+    # cost = DivSearch(target, verbose=False, test=True)
+    # print(cost)
 
-    print(target)
+    print("\n --- Meta --- ")
+    engine = MetaSearch(target, disable_mem=True)
+    cost = engine.greedySearch()
+    print("greedy -->", cost)
+    cost = engine.annealSearch(5000, 0.25, 100, 4000, save=True)
+    print("annealing -->", cost)
+    cost = engine.randomSearch(1000, 0.25, save=True)
+    print("random -->", cost)
+
+    print('\n', target)
 
 if __name__ == '__main__':
     main()
