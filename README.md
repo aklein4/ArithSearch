@@ -28,7 +28,7 @@ For MetaSearch, greedySearch with default parameters was able to find a solution
 
 ![randomSearch output graph](./random_example.png)
 
-Note that for all of the listed methods, examples can found for which that method does the best.
+Note that for all of the listed methods, examples can found for which that method does the best. Also note that caching methods were not used anywhere in this test for a fair comparison, and that if they were used then MetaSearch would likely have much lower costs.
 
 ### DivSearch Proof of Superiority:
 
