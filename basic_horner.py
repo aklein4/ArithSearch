@@ -6,6 +6,7 @@ from meta_search import MetaSearch
 
 import numpy as np
 from itertools import permutations
+import math
 
 
 def basic_horners(poly: SparsePoly, order):
@@ -23,16 +24,15 @@ def basic_horners(poly: SparsePoly, order):
 
     cost = 0
 
-    def clean(s: list, d: int):
+    def clean(s: list, d: int=-1):
         nonlocal cost
         if len(s) == 0:
             return []
 
-        cost += 1 # this represents a multiplication
-        for k in range(len(s)):
-            s[k][d] -= 1
-        # if len(s) == 1 and sum(s[0]) == 0:
-        #     cost -= 1
+        if d >= 0:
+            cost += 1 # this represents a multiplication
+            for k in range(len(s)):
+                s[k][d] -= 1
 
         # check all monomials to see if they are known
         kept = []
@@ -41,6 +41,8 @@ def basic_horners(poly: SparsePoly, order):
                 kept.append(k)
 
         return kept
+
+    clean(problem)
 
     on_groups = [problem]
     off_groups = []
@@ -73,8 +75,8 @@ def basic_horners(poly: SparsePoly, order):
 
 
 def main():
-    N = 3
-    SCALE = 5
+    N = 4
+    SCALE = 3
     ELEMS = 10
 
     target = SparsePoly(N)
@@ -83,16 +85,20 @@ def main():
         target[k] = 1
 
     orders = list(permutations(range(N)))
+    if len(orders) < math.factorial(N):
+        raise RuntimeError("Orders did not permutate correctly!")
+
     print(" --- Regular --- ")
     for ord in orders:
-        print(tuple(ord), "-->", basic_horners(target, ord))
+        horn = basic_horners(target, ord)
+        print(tuple(ord), "-->", horn)
 
     # print("\n --- Improved --- ")
     # cost = DivSearch(target, verbose=False, test=True)
     # print(cost)
 
     print("\n --- Meta --- ")
-    engine = MetaSearch(target, disable_mem=True)
+    engine = MetaSearch(target, disable_mem=True, remove_early=0)
     cost = engine.greedySearch()
     print("greedy -->", cost)
     cost = engine.annealSearch(5000, 0.25, 10, 4000, save=True)

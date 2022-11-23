@@ -41,13 +41,20 @@ def get_prioritized_mem(k: np.ndarray):
 
 class MetaSearch:
 
-    def __init__(self, poly: SparsePoly, care_about_add: bool=False, disable_mem=False, disable_cache=False):
+    def __init__(self, poly: SparsePoly, care_about_add: bool=False, disable_mem=False, disable_cache=False, remove_early=0):
+        """
+        remove_early:
+        0 - never remove anything early (works best on small problems)
+        1 - sometimes remove based on whether a component might be reduced later (works slightly better/faster than 0 on big problems)
+        2 - always remove a component if possible (worst costs but slightly faster performance)
+        """
         self.poly = poly
         self.n = poly.n
     
         self.care_about_add = care_about_add
         self.disable_mem = disable_mem
         self.disable_cache = disable_cache
+        self.remove_early = remove_early
 
         self.mem_base = []
         self.mem = []
@@ -96,6 +103,23 @@ class MetaSearch:
                 heapq.heappush(self.mem, get_prioritized_mem(k))
 
 
+    def _check_divider(self, group: list, divider, sorted=False):
+        if len(group) == 0:
+            return False
+
+        if not sorted:
+            group.sort(reverse=True, key=lambda x: np.sum(x))
+        
+        for k in group:
+            if np.sum(k) <= np.sum(divider):
+                break
+            diff = k - divider
+            if np.min(diff) >= 0 and np.sum(diff) > 0:
+                return True
+        
+        return False
+
+
     def _clean(self, l: list, d: np.ndarray=None) -> list:
         if d is None:
             d = np.zeros(self.n, dtype=np.int32)
@@ -114,10 +138,23 @@ class MetaSearch:
                 k -= d
 
         # check all monomials to see if they are known
+        if self.remove_early:
+            l.sort(reverse=True, key=lambda x: np.sum(x))
         kept = []
         fence = False
         for k in l:
-            if tuple(k) in self.mem_set or sum(k) <= 1:
+            stopping_condition = np.sum(k) == 0
+
+            if not stopping_condition and (len(l) == 1 or self.remove_early == 2):
+                stopping_condition = tuple(k) in self.mem_set
+
+            elif not stopping_condition and self.remove_early == 1:
+                stopping_condition = (
+                    tuple(k) in self.mem_set and
+                    not self._check_divider(kept, k, sorted=True)
+                )
+
+            if stopping_condition:
                 # is known
                 if np.sum(k) >= 1: # and not test:
                     # this is not a scalar, so take into account coefficient
@@ -381,10 +418,10 @@ class MetaSearch:
 def main():
 
     # generate some big random polynomial
-    N = 10
+    N = 5
     scale = 3
     target = SparsePoly(N)
-    more = 1000
+    more = 10000
     while more > 0:
         k = np.round_(np.random.exponential(scale=scale, size=N)).astype(np.int32)
         target[k] = 1
@@ -402,17 +439,26 @@ def main():
 
     # get solution using our method
     engine = MetaSearch(target)
-
-    print("\n --> Greedy Cost:", engine.greedySearch())
-
     t_start = time.time_ns()
-    cost = engine.annealSearch(500, 1, 10, 400, verbose=False, save=True)
+    cost = engine.greedySearch()
+    print(" --> 0 Cost:", cost, "("+str(round((time.time_ns() - t_start)*1e-9, 3))+" s)")
 
-    print(" --> Annealing Cost:", cost, "("+str(round((time.time_ns() - t_start)*1e-9, 3))+" s)")
-    print("")
+    engine.remove_early = 1
+    t_start = time.time_ns()
+    cost = engine.greedySearch()
+    print(" --> 1 Cost:", cost, "("+str(round((time.time_ns() - t_start)*1e-9, 3))+" s)")
+
+    # engine.remove_early = 2
+    # t_start = time.time_ns()
+    # cost = engine.greedySearch()
+    # print(" --> 2 Cost:", cost, "("+str(round((time.time_ns() - t_start)*1e-9, 3))+" s)")
+
+    # t_start = time.time_ns()
+    # cost = engine.annealSearch(500, 1, 10, 400, verbose=False, save=True)
+    # print(" --> Annealing Cost:", cost, "("+str(round((time.time_ns() - t_start)*1e-9, 3))+" s)")
 
     # the most basic representation just multiplies and adds every monomial one by one
-    print("Naive Estimate:", sum([1+np.sum(np.maximum(0, np.array(k)-1)) for k in target.dict.keys()])-1)
+    print("\nNaive Estimate:", sum([1+np.sum(np.maximum(0, np.array(k)-1)) for k in target.dict.keys()])-1)
 
     # show the benchmark
     print("Horner Computation:", horner.num_ops)
