@@ -366,10 +366,10 @@ def main():
     # target *= target
 
     # generate some big random polynomial
-    N = 5
-    scale = 3
+    N = 2
+    scale = 4
     target = SparsePoly(N)
-    more = 1000
+    more = 30
     while more > 0:
         k = np.round_(np.random.exponential(scale=scale, size=N)).astype(np.int32)
         target[k] = 1
@@ -385,20 +385,21 @@ def main():
     horner = multivar_horner.HornerMultivarPolynomialOpt(coefs, keys, rectify_input=True, keep_tree=True)
     print("created benchmark...\n")
 
-    # get solution using our method
-    cost = DivSearch(target, verbose=False)
-    test_cost = DivSearch(target, verbose=False, test=True)
+    # # get solution using our method
+    # cost = DivSearch(target, verbose=False)
+    # test_cost = DivSearch(target, verbose=False, test=True)
 
-    print("\n --> Cost:", cost)
-    print(" --> Test Cost:", test_cost)
-    print("")
+    # print("\n --> Cost:", cost)
+    # print(" --> Test Cost:", test_cost)
+    # print("")
 
-    # the most basic representation just multiplies and adds every monomial one by one
-    print("Naive Estimate:", sum([1+np.sum(np.maximum(0, np.array(k)-1)) for k in target.dict.keys()])-1)
+    # # the most basic representation just multiplies and adds every monomial one by one
+    # print("Naive Estimate:", sum([1+np.sum(np.maximum(0, np.array(k)-1)) for k in target.dict.keys()])-1)
 
     # show the benchmark
     print("Horner Computation:", horner.num_ops)
     og_tree = str(horner.factorisation_tree)
+    print(og_tree)
     fixed_tree = ""
     i = 0
     while i < len(og_tree):

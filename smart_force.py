@@ -9,7 +9,7 @@ import time
 # constraints to satisfy when running as main
 # each v[i] represents the maximum coefficient of x^i
 # time complexity is ~ (product of all constraints)^2, assuming that v[i+1] <= v[i]
-CONSTRAINTS_TO_USE = [9, 9, 9, 9]
+CONSTRAINTS_TO_USE = [50, 50, 35, 10, 1]
 
 # data seems to suggest that costs are never greater than 2*order
 # this enforces that constraint for pruning (this is confirmed by Horner's algorithm)
@@ -493,12 +493,12 @@ class SmartForceInst:
 
 def main():
     # init
-    inst = SmartForceInst(np.array(CONSTRAINTS_TO_USE), check_depth=True, allow_negative=True)
+    inst = SmartForceInst(np.array(CONSTRAINTS_TO_USE), check_depth=True, allow_negative=False)
 
     # execute
-    start_time = time.time()
+    start_time = time.time_ns()
     inst.search(verbose=True, iterative_deepening=True, save_progress=False)
-    print(" --- Search Complete! (" + str(round(time.time()-start_time, 1)) + " s) ---\n")
+    print(" --- Search Complete! (" + str(round((time.time_ns()-start_time)*1e-9, 5)) + " s) ---\n")
 
     # save final output
     sys.stdout.write("Saving... ")
