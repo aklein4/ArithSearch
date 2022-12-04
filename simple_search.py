@@ -4,6 +4,7 @@ from sparse_poly import SparsePoly, LETTERS
 import multivar_horner
 
 import numpy as np
+import torch
 from dataclasses import dataclass, field
 import heapq
 import time
@@ -16,7 +17,7 @@ DECOMP_TRIALS = 10
 
 class AnnealNode:
     def __init__(self, common, on_child, off_child, size, added_const=False):
-        self.common = common.copy() if not common is None else None
+        self.common = common.clone() if not common is None else None
         self.on_child = on_child
         self.off_child = off_child
         self.size = size
@@ -41,9 +42,9 @@ class AnnealNode:
     def __str__(self) -> str:
         my_str = ""
         if self.on_child is not None:
-            for i in range(self.common.size):
+            for i in range(self.common.numel()):
                 if self.common[i] > 0:
-                    my_str += "x_"+str(i)+'^'+str(round(self.common[i]))
+                    my_str += "x_"+str(i)+'^'+str(round(self.common[i].item()))
             my_str +=  "(" + str(self.on_child) + ")"
         if self.off_child is not None:
             if len(my_str) > 0:
@@ -57,13 +58,14 @@ class AnnealNode:
 
 
 def default_heuristic(m, commons):
-    diff = m - np.expand_dims(np.squeeze(commons).T, 0)
-    good_diff = np.min(diff, axis=1) >= 0
-    good_diff = np.expand_dims(good_diff, 1)
-    diff_zeros = np.full_like(m, good_diff)
+    diff = m - commons
+    good_diff = torch.min(diff, dim=1).values >= 0
+    good_diff = torch.unsqueeze(good_diff, dim=1)
+    good_diff.expand(-1, m.shape[1], -1)
 
-    fixed = np.where(diff_zeros > 0, np.expand_dims(np.squeeze(commons).T, 0)/np.maximum(1, np.sqrt(m)), 0)
-    summ = np.sum(fixed, axis=(0, 1))
+    maxes = torch.where(m > 1, torch.sqrt(m), 1)
+    fixed = torch.where(good_diff > 0, commons/maxes, 0)
+    summ = torch.sum(fixed, dim=(0, 1))
     return summ
 
 
@@ -94,54 +96,56 @@ class SimpleSearch:
         if base is not None:
             for node in base.get_nodes():
                 if not node.common is None:
-                    ne = node.common.copy()
+                    ne = node.common.clone()
                     self.commons.append(ne)
-                    already_used.add(tuple(ne))
+                    already_used.add(tuple(torch.round_(ne)))
 
-        maxs = np.max(self._get_problem(), axis=0)
-        constraints = (maxs + 1)//2
+        maxs = torch.max(self._get_problem(), dim=0).values
+        constraints = torch.div(maxs + 1, 2, rounding_mode="floor")
 
         for i in range(self.n):
             if maxs[i] > 0:
-                ne = np.zeros(self.n, dtype=np.int32)
+                ne = torch.zeros(self.n)
                 ne[i] = 1
-                if tuple(ne) not in already_used:
+                if tuple(torch.round_(ne)) not in already_used:
                     already_used.add(tuple(ne))
-                    self.commons.append(ne)
+                    self.commons.append(torch.round_(ne))
         if cache:
+            fixed_constraints = torch.tensor([round(constraints[i].item()) for i in range(constraints.nelement())], dtype=torch.int32)
             for i in range(self.n):
                 if constraints[i] > 2:
-                    for n in range(2, 1 + constraints[i]):
-                        ne = np.zeros(self.n, dtype=np.int32)
+                    for n in range(2, 1 + fixed_constraints[i]):
+                        ne = torch.zeros(self.n)
                         ne[i] = n
-                        if tuple(ne) not in already_used:
+                        if tuple(torch.round_(ne)) not in already_used:
                             already_used.add(tuple(ne))
-                            self.commons.append(ne)
+                            self.commons.append(torch.round_(ne))
         init_len = len(self.commons)
         tries = 0
         while len(self.commons) < init_len + n_rands and tries < self.n*n_rands:
             tries += 1
-            ne = random.choice(self.commons).copy()
-            ne[np.random.randint(0, self.n)] += 1
-            if tuple(ne) not in already_used and np.all(ne <= constraints):
-                already_used.add(tuple(ne))
+            ne = random.choice(self.commons).clone()
+            ne[torch.randint(self.n, size=(1,))] += 1
+            if tuple(torch.round_(ne)) not in already_used and torch.all(ne <= constraints):
+                already_used.add(tuple(torch.round_(ne)))
                 self.commons.append(ne)
         
-        self.commons = np.stack(self.commons)
-        self.commons = np.expand_dims(self.commons, 0)
+        self.commons = torch.stack(self.commons)
+        self.commons = torch.transpose(self.commons, 0, 1)
+
 
     def _get_problem(self):
         problem = []
         for k in self.poly.dict.keys():
-            a = np.array(k, dtype=np.int32)
+            a = torch.tensor(k)
             problem.append(a)
 
-        return np.stack(problem)
+        return torch.stack(problem)
 
 
-    def _clean(self, m: np.ndarray, common: np.ndarray=None) -> list:
+    def _clean(self, m: torch.tensor, common: torch.Tensor=None) -> list:
 
-        if m.size == 0:
+        if m.numel() == 0:
             raise RuntimeError("Tried to clean empty array")
 
         # reduce with common denominator
@@ -149,11 +153,11 @@ class SimpleSearch:
             self.cost += 1 # this represents a multiplication
             m[:, ] -= common
 
-        if np.any(m < 0):
+        if torch.any(m < 0):
             raise RuntimeError("Negative exponent in clean.")
 
-        cleaned = m[np.sum(m, axis=1) > 0]
-        if cleaned.size < m.size:
+        cleaned = m[torch.sum(m, dim=1) > 0]
+        if cleaned.numel() < m.numel():
             return cleaned, True
         return cleaned, False
 
@@ -166,8 +170,9 @@ class SimpleSearch:
         used_commons = set()
 
         # stack of polynomials to be decomposed
+        g, intercept = self._clean(problem)
         try:
-            g, intercept = self._clean(problem)
+            
             groups = [g]
         except:
             raise RuntimeError("Cannot clean problem. Problem is likely empty.")
@@ -181,7 +186,7 @@ class SimpleSearch:
 
             # pop smallest remaining group
             curr_group = groups.pop()
-            if curr_group.size == 0:
+            if curr_group.numel() == 0:
                 raise RuntimeError("Group is empty? This shouldn't happen.")
             curr_follow = follows.pop()
             curr_path = paths.pop()
@@ -197,40 +202,39 @@ class SimpleSearch:
                     common = random.choice(range(self.commons.shape[1]))
 
                 else:
-                    expanded = np.full(list(curr_group.shape)+[self.commons.shape[1]], np.expand_dims(curr_group, 2))
+                    expanded = torch.tile(torch.unsqueeze(curr_group, 2), (1, 1, self.commons.shape[1]))
 
                     scores = self.heuristic(expanded, self.commons)
 
-                    if np.sum(scores) == 0:
+                    if torch.sum(scores) == 0:
                         raise RuntimeError("Group has no valid denominator choices!")
                 
                     if gamma is None:
-                        common = np.argmax(scores)
+                        common = torch.argmax(scores)
                     else:
-                        weights = np.where(scores > 0, scores**gamma, 0)
-                        weights = weights.astype(np.float64) / np.sum(weights)
-                        common = np.random.choice(range(scores.size), p=weights)
+                        weights = torch.where(scores > 0, scores**gamma, 0)
+                        weights = weights / torch.sum(weights)
+                        common = np.random.choice(range(scores.numel()), p=np.array(weights))
 
-                common = self.commons[0, common]
+                common = self.commons[:, common]
 
-            used_commons.add(tuple(common))
+            used_commons.add(tuple(torch.round_(common)))
             curr_path.common = common
             curr_path.size = curr_group.shape[0]
 
-            diff = curr_group - np.expand_dims(np.squeeze(common), 0)
-            good_diff = np.min(diff, axis=1) >= 0
+            good_diff = torch.min(curr_group - common, dim=1).values >= 0
 
             on_set = curr_group[good_diff, :]
 
-            if on_set.size == 0:
+            if on_set.numel() == 0:
                 groups.append(curr_group)
                 follows.append(curr_follow)
                 paths.append(curr_path)
                 continue
 
-            off_set = curr_group[np.logical_not(good_diff), :]
+            off_set = curr_group[torch.logical_not(good_diff), :]
 
-            if off_set.size > 0:
+            if off_set.numel() > 0:
                 groups.append(off_set)
                 follows.append(None if curr_follow is None else curr_follow.off_child)
                 
@@ -238,11 +242,11 @@ class SimpleSearch:
                 curr_path.off_child = off_path
                 paths.append(off_path)
 
-            if on_set.size > 0:
+            if on_set.numel() > 0:
                 cleaned, intercept = self._clean(on_set, common)
                 on_path = AnnealNode(None, None, None, None, added_const=intercept)
                 curr_path.on_child = on_path
-                if cleaned.size > 0:
+                if cleaned.numel() > 0:
                     groups.append(cleaned)
                     follows.append(None if curr_follow is None else curr_follow.on_child)
                     paths.append(on_path)
@@ -252,13 +256,13 @@ class SimpleSearch:
 
             for trial in range(DECOMP_TRIALS):
                 common_costs.append(0)
-                a = np.array(k, dtype=np.int32)
-                while np.sum(a) > 1:
-                    a[np.random.choice(range(self.n), p=np.sign(a)/np.sum(np.sign(a)))] -= 1
-                    if np.min(a) < 0:
+                a = torch.tensor(k)
+                while torch.sum(a) > 1:
+                    a[np.random.choice(range(self.n), p=np.array(torch.sign(a)/torch.sum(torch.sign(a))))] -= 1
+                    if torch.min(a) < 0:
                         raise RuntimeError("invalid common factor cost calculation.")
                     common_costs[-1] += 1
-                    if tuple(a) in used_commons:
+                    if tuple(torch.round_(a)) in used_commons:
                         break
                 
                 if common_costs[-1] <= 1:
@@ -350,7 +354,7 @@ class SimpleSearch:
 
             accepted = True
             comparer = prev_cost
-            p_accept = 1 if new_cost <= prev_cost else np.exp(max(-20, (comparer - new_cost)/(temp)))
+            p_accept = 1 if new_cost <= prev_cost else np.exp(max(-20, (comparer - new_cost)/temp))
             if new_cost <= prev_cost or random.random() < p_accept:
                 prev_cost = new_cost
                 curr_path = new_path
@@ -480,7 +484,7 @@ def main():
 
     target = SparsePoly(N)
     for c in range(coefs):
-        k = np.round_(np.random.exponential(scale=scale, size=N)).astype(np.int32)
+        k = np.round_(np.random.exponential(scale=scale, size=N))
         target[k] = 1
 
     # the most basic representation just multiplies and adds every monomial one by one
