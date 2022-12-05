@@ -418,10 +418,10 @@ class MetaSearch:
 def main():
 
     # generate some big random polynomial
-    N = 5
+    N = 15
     scale = 3
     target = SparsePoly(N)
-    more = 10000
+    more = 100000
     while more > 0:
         k = np.round_(np.random.exponential(scale=scale, size=N)).astype(np.int32)
         target[k] = 1
@@ -435,23 +435,13 @@ def main():
         coefs.append(target[k])
         keys.append(k)
     horner = multivar_horner.HornerMultivarPolynomialOpt(coefs, keys, rectify_input=True, keep_tree=True)
-    print("created benchmark...\n")
+    print("created benchmark...")
 
     # get solution using our method
-    engine = MetaSearch(target)
+    engine = MetaSearch(target, remove_early=1)
     t_start = time.time_ns()
-    cost = engine.greedySearch()
-    print(" --> 0 Cost:", cost, "("+str(round((time.time_ns() - t_start)*1e-9, 3))+" s)")
-
-    engine.remove_early = 1
-    t_start = time.time_ns()
-    cost = engine.greedySearch()
-    print(" --> 1 Cost:", cost, "("+str(round((time.time_ns() - t_start)*1e-9, 3))+" s)")
-
-    # engine.remove_early = 2
-    # t_start = time.time_ns()
-    # cost = engine.greedySearch()
-    # print(" --> 2 Cost:", cost, "("+str(round((time.time_ns() - t_start)*1e-9, 3))+" s)")
+    cost = engine.greedySearch(verbose=True)
+    print("\n --> Cost:", cost, "("+str(round((time.time_ns() - t_start)*1e-9, 3))+" s)")
 
     # t_start = time.time_ns()
     # cost = engine.annealSearch(500, 1, 10, 400, verbose=False, save=True)
@@ -483,7 +473,7 @@ def main():
     # print(fixed_tree)
 
     # show the polynomial we computed
-    # print(target)
+    print(target)
     print("")
 
 

@@ -10,9 +10,12 @@ import heapq
 import time
 import random
 import matplotlib.pyplot as plt
-
+import argparse
 
 DECOMP_TRIALS = 10
+
+
+DEFAULT_FLATTEN_THRESH = 100
 
 
 class AnnealNode:
@@ -71,7 +74,7 @@ def default_heuristic(m, commons):
 
 class SimpleSearch:
 
-    def __init__(self, poly: SparsePoly, heuristic=default_heuristic, cache=True, n_rands = 0):
+    def __init__(self, poly: SparsePoly, heuristic=default_heuristic, cache=True, n_rands = 0, gpu=False, flatten_thresh=DEFAULT_FLATTEN_THRESH):
         self.poly = poly
         self.n = poly.n
 
@@ -80,7 +83,10 @@ class SimpleSearch:
 
         self.heuristic = heuristic
 
-        self.cost = 0
+        self.flatten_thresh = flatten_thresh
+
+        self.device = torch.device("cuda") if gpu else torch.device("cpu")
+
         self.reset()        
 
 
@@ -98,27 +104,27 @@ class SimpleSearch:
                 if not node.common is None:
                     ne = node.common.clone()
                     self.commons.append(ne)
-                    already_used.add(tuple(torch.round_(ne)))
+                    already_used.add(tuple(np.round_(ne.cpu().numpy())))
 
         maxs = torch.max(self._get_problem(), dim=0).values
         constraints = torch.div(maxs + 1, 2, rounding_mode="floor")
 
         for i in range(self.n):
             if maxs[i] > 0:
-                ne = torch.zeros(self.n)
+                ne = torch.zeros(self.n, device=self.device)
                 ne[i] = 1
                 if tuple(torch.round_(ne)) not in already_used:
-                    already_used.add(tuple(ne))
+                    already_used.add(tuple(np.round_(ne.cpu().numpy())))
                     self.commons.append(torch.round_(ne))
         if cache:
             fixed_constraints = torch.tensor([round(constraints[i].item()) for i in range(constraints.nelement())], dtype=torch.int32)
             for i in range(self.n):
                 if constraints[i] > 2:
                     for n in range(2, 1 + fixed_constraints[i]):
-                        ne = torch.zeros(self.n)
+                        ne = torch.zeros(self.n, device=self.device)
                         ne[i] = n
                         if tuple(torch.round_(ne)) not in already_used:
-                            already_used.add(tuple(ne))
+                            already_used.add(tuple(np.round_(ne.cpu().numpy())))
                             self.commons.append(torch.round_(ne))
         init_len = len(self.commons)
         tries = 0
@@ -126,8 +132,8 @@ class SimpleSearch:
             tries += 1
             ne = random.choice(self.commons).clone()
             ne[torch.randint(self.n, size=(1,))] += 1
-            if tuple(torch.round_(ne)) not in already_used and torch.all(ne <= constraints):
-                already_used.add(tuple(torch.round_(ne)))
+            if tuple(np.round_(ne.cpu().numpy())) not in already_used and torch.all(ne <= maxs):
+                already_used.add(tuple(np.round_(ne.cpu().numpy())))
                 self.commons.append(ne)
         
         self.commons = torch.stack(self.commons)
@@ -137,7 +143,7 @@ class SimpleSearch:
     def _get_problem(self):
         problem = []
         for k in self.poly.dict.keys():
-            a = torch.tensor(k)
+            a = torch.tensor(k, device=self.device)
             problem.append(a)
 
         return torch.stack(problem)
@@ -170,9 +176,8 @@ class SimpleSearch:
         used_commons = set()
 
         # stack of polynomials to be decomposed
-        g, intercept = self._clean(problem)
-        try:
-            
+        try: 
+            g, intercept = self._clean(problem)
             groups = [g]
         except:
             raise RuntimeError("Cannot clean problem. Problem is likely empty.")
@@ -214,11 +219,12 @@ class SimpleSearch:
                     else:
                         weights = torch.where(scores > 0, scores**gamma, 0)
                         weights = weights / torch.sum(weights)
-                        common = np.random.choice(range(scores.numel()), p=np.array(weights))
+                        dist = torch.distributions.categorical.Categorical(weights)
+                        common = dist.sample()
 
                 common = self.commons[:, common]
 
-            used_commons.add(tuple(torch.round_(common)))
+            used_commons.add(tuple(np.round_(common.cpu().numpy())))
             curr_path.common = common
             curr_path.size = curr_group.shape[0]
 
@@ -256,13 +262,13 @@ class SimpleSearch:
 
             for trial in range(DECOMP_TRIALS):
                 common_costs.append(0)
-                a = torch.tensor(k)
-                while torch.sum(a) > 1:
-                    a[np.random.choice(range(self.n), p=np.array(torch.sign(a)/torch.sum(torch.sign(a))))] -= 1
-                    if torch.min(a) < 0:
+                a = np.array(k)
+                while np.sum(a) > 1:
+                    a[np.random.choice(range(self.n), p=np.array(np.sign(a)/np.sum(np.sign(a))))] -= 1
+                    if np.min(a) < 0:
                         raise RuntimeError("invalid common factor cost calculation.")
                     common_costs[-1] += 1
-                    if tuple(torch.round_(a)) in used_commons:
+                    if tuple(np.round_(a)) in used_commons:
                         break
                 
                 if common_costs[-1] <= 1:
@@ -305,13 +311,11 @@ class SimpleSearch:
         return best_cost, best_tree
 
 
-    def annealSearch(self, iterations: int, gamma: float, temp_start: float, temp_schedule: int, base_on_greedy: bool=False, verbose: bool=False, save=False):
+    def annealSearch(self, temp_schedule: int, gamma: float, temp_start: float=1, base_on_greedy: bool=False, verbose: bool=False, save=False):
 
         prev_cost, curr_path = self.search(gamma=(None if base_on_greedy else gamma))
         best_cost = prev_cost
         best_tree = curr_path.copy()
-
-        temp = temp_start
 
         acc_x = [0]
         acc_y = [prev_cost]
@@ -328,8 +332,13 @@ class SimpleSearch:
             plt.title("SimpleSearch with Simulated Annealing")
             plt.savefig("anneal_out.png")
 
+        temp = temp_start
+
         prev_time = np.floor(time.time())
-        for it in range(1, 1+iterations):
+        consec_fails = 0
+        it = 0
+        while it < temp_schedule or consec_fails < self.flatten_thresh:
+            it += 1
 
             old_path = curr_path.copy()
             old_cost = prev_cost
@@ -351,6 +360,11 @@ class SimpleSearch:
             if new_cost < best_cost:
                 best_cost = new_cost
                 best_tree = new_path.copy()
+
+            if new_cost < prev_cost:
+                consec_fails = 0
+            else:
+                consec_fails += 1
 
             accepted = True
             comparer = prev_cost
@@ -386,7 +400,8 @@ class SimpleSearch:
 
         return best_cost, best_tree
 
-    def basinSearch(self, basins: int, time_out: int, gamma: float, verbose: bool=False, save=False):
+
+    def basinSearch(self, basins: int, gamma: float, verbose: bool=False, save=False):
 
         best_cost = None
         best_tree = None
@@ -417,7 +432,7 @@ class SimpleSearch:
 
             prev_time = np.floor(time.time())
             consec_fails = 0
-            while consec_fails < time_out:
+            while consec_fails < self.flatten_thresh:
                 total_seen += 1
 
                 old_path = curr_path.copy()
@@ -473,14 +488,14 @@ class SimpleSearch:
 
         return best_cost, best_tree
 
-def main():
+def main(args):
 
     show_trees = True
 
     # generate some big random polynomial
-    N = 3
+    N = 5
     scale = 1
-    coefs = 10
+    coefs = 25
 
     target = SparsePoly(N)
     for c in range(coefs):
@@ -505,21 +520,21 @@ def main():
     if show_trees: print(tree)
 
     """ get solution using our method """
-    engine = SimpleSearch(target, cache=True, n_rands=100)
+    engine = SimpleSearch(target, cache=True, n_rands=100, gpu=args.cuda)
 
     cost, tree = engine.search()
     print("\n --> Greedy Cost:", cost)
     if show_trees: print(tree)
 
-    cost, tree = engine.randomSearch(10, gamma=None, save=True, verbose=False)
+    cost, tree = engine.randomSearch(1, gamma=None, save=True, verbose=False)
     print("\n --> Random Cost:", cost)
     if show_trees: print(tree)
 
-    cost, tree = engine.annealSearch(100, 3, 3, 80, base_on_greedy=True, save=True, verbose=False)
+    cost, tree = engine.annealSearch(1000, 3, 1, base_on_greedy=True, save=True, verbose=False)
     print("\n --> Anneal Cost:", cost)
     if show_trees: print(tree)
 
-    cost, tree = engine.basinSearch(10, 500, 3, save=True)
+    cost, tree = engine.basinSearch(5, 3, save=True)
     print("\n --> Basin Cost:", cost)
     if show_trees: print(tree)
 
@@ -527,4 +542,10 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser(description='Python-based choicenet')
+
+    parser.add_argument('--gpu', dest='cuda', action='store_const', const=True, default=False, 
+                    help='Whether to use cuda gpu acceleration')
+
+    args = parser.parse_args()
+    main(args)

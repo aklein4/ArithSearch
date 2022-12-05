@@ -9,6 +9,8 @@
 
 ### MetaSearch Example:
 
+1b^2.0c^2.0 + 1ac + 1ab + 1ab^3.0c^3.0 + 1abc^2.0 + 1a + 1abc + 1a^3.0c^4.0 + 1ab^3.0c
+
 For the polynomial:
 
  1a^2c^3 + 1a^5b^2c^12 + 1a^6b^3c^6 + 1a^10c + 1a^11 + 1a^4bc^11 + 1a^10b^3c^12 + 1a^5bc^10 + 1ab^11c^13 + 1a^6b^4
