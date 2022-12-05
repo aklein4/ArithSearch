@@ -6,6 +6,9 @@ from simple_search import SimpleSearch
 
 import csv
 import numpy as np
+import sys
+import matplotlib.pyplot as plt
+
 
 SAVE_FOLDER = "./evaluation_data/"
 
@@ -28,6 +31,58 @@ def save_data(data: dict, filename: str):
 
         for i in range(data_len):
             spamwriter.writerow([data[h][i] for h in header])
+
+
+def read_data(filename):
+
+    header = None
+    tests = []
+
+    with open(SAVE_FOLDER+filename, newline='') as csvfile:
+        spamreader = csv.reader(csvfile, dialect='excel')
+        for row in spamreader:
+
+            if row[0][0] == '#':
+                continue
+
+            if header is None:
+                header = [row[i] for i in range(len(row))]
+            
+            else:
+                tests.append([int(c) for c in row])
+
+    tests = np.stack(tests)
+
+    averages = np.sum(tests, axis=0) / tests.shape[0]
+
+    print("\n --- Averages ---")
+    for h in range(len(header)):
+        print(" -", str(header[h])+":", round(averages[h], 3))
+
+    wins = np.where(tests <= np.expand_dims(np.min(tests, axis=1), 1), 1, 0)
+    win_percs = np.sum(wins, axis=0) / wins.shape[0]
+
+    print("\n --- Winning Percentages ---")
+    for h in range(len(header)):
+        print(" -", str(header[h])+":", round(win_percs[h], 3))
+
+    newline_header = [header[h].replace(" ", '\n') for h in range(len(header))]
+
+    plt.boxplot(tests, vert=True, labels=newline_header, flierprops=dict(marker='x'), meanline=True, meanprops=dict(color='k', linestyle='--'), medianprops=dict(color='k'))
+    # plt.ylim(bottom=0)
+    plt.ylabel("Cost")
+    plt.xlabel("Search Method")
+    plt.title("Distribution of Solution Costs for Different Circuit Generating Methods")
+    plt.tight_layout()
+    plt.savefig("box_whisker.png")
+
+    plt.clf()
+    plt.bar(newline_header, win_percs, color='k')
+    plt.ylabel("% of trials finding the best solution (including ties)")
+    plt.xlabel("Search Method")
+    plt.title("Percentage of Trials Finding the Best Solution\nfor Different Circuit Generating Methods")
+    plt.tight_layout()
+    plt.savefig("winning_percentage.png")
 
 
 def command_wrap(command):
@@ -130,7 +185,7 @@ def main():
 
     engine_params = {
         "cache": True,
-        "n_rands": 0,
+        "n_rands": coefs,
         "flatten_thresh": 100
     }
 
@@ -149,7 +204,7 @@ def main():
     basin_params = {
         "basins": 10,
         "gamma": 3
-    }
+    } 
 
     data = get_eval_data(
             tests, N, scale, coefs,
@@ -159,4 +214,9 @@ def main():
     save_data(data, "small.csv")
 
 if __name__ == '__main__':
-    main()
+
+    if len(sys.argv) == 2:
+        read_data(sys.argv[1])
+    
+    else:
+        main()

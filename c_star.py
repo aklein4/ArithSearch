@@ -466,19 +466,22 @@ class CStar:
 
         return best_solution
 
+
+def get_random_target(N, scale, coefs):
+    # generate some big random polynomial
+    target = SparsePoly(N)
+    for c in range(coefs):
+        k = np.round_(np.random.exponential(scale=scale, size=N))
+        target[k] = random.randint(1, 1+coefs)
+
+    return target
+
+
 def main():
-    target = SparsePoly(3)
-    target[1, 0, 0] = 1
-    target[0, 1, 0] = 1
-    target *= target
-    t_2 = SparsePoly(3)
-    t_2[0, 0, 1] = 2
-    target *= t_2
-    target += t_2*2 + 2
-    target *= target
+    target = get_random_target(3, 1, 10)
     
-    engine = CStar(target, 8, costs={ OPERATIONS.MULT: 1,OPERATIONS.ADD: 0.25 })
-    sol = engine.recursive_search(10, 20000, 10, 1, 1, n_models=3)
+    engine = CStar(target, 10, costs={ OPERATIONS.MULT: 1,OPERATIONS.ADD: 0.25 })
+    sol = engine.splitting_search(10000, 25, 15, 3, n_models=10, verbose=True)
 
     print("\nTarget:", target)
     if sol == None:
