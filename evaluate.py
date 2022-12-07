@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 SAVE_FOLDER = "./evaluation_data/"
 
 
-def save_data(data: dict, filename: str):
+def save_data(data: dict, filename: str, comment=None):
 
     data_len = len(list(data.values())[0])
     for val in data.values():
@@ -26,6 +26,9 @@ def save_data(data: dict, filename: str):
     with open(SAVE_FOLDER+filename, 'w', newline='') as csvfile:
         spamwriter = csv.writer(csvfile, dialect='excel')
         
+        if not comment is None:
+            spamwriter.writerow(['#'] + comment)
+
         # put header at top header
         spamwriter.writerow(header)
 
@@ -125,6 +128,8 @@ def command_wrap(command):
         else:
             raise ValueError("invalid function key: "+str(func))
 
+        print(" -", func+str(':'), outputs[func])
+
     return outputs
 
 
@@ -138,9 +143,16 @@ def get_random_target(N, scale, coefs):
     return target
 
 
-def get_eval_data(tests, N, scale, coefs, engine_params, random_params, anneal_params, basin_params):
+def get_eval_data(tests, N, scale, coefs, engine_params, random_params, anneal_params, basin_params, save_name=None, save_freq=None):
 
     data = {}
+
+    comment = [
+        "tests="+str(tests),
+        "N="+str(N),
+        "scale="+str(scale),
+        "coefs="+str(coefs)
+    ]
 
     for test in range(tests):
         print("\n --- Test", test, "---")
@@ -164,54 +176,64 @@ def get_eval_data(tests, N, scale, coefs, engine_params, random_params, anneal_p
 
         results = command_wrap(command)
 
-        for res in results.keys():
-            print(" -", res+str(':'), results[res])
-
         for k in results:
             if k in data.keys():
                 data[k].append(results[k])
             else:
                 data[k] = [results[k]]
     
+        if test > 0 and not save_name is None and not save_freq is None and test % save_freq == 0:
+            save_data(data, save_name, comment=comment)
+
+    if not save_name is None:
+        save_data(data, save_name, comment=comment)
+
     return data
 
 
+TESTS = 100
+
+# N, scale, coefs
+TEST_PARAMS = [
+    (10, 3, 100)
+]
+
 def main():
 
-    tests = 100
-    N = 5
-    scale = 2
-    coefs = 20
+    it = 0
+    for test_inst in TEST_PARAMS:
+        it += 1
 
-    engine_params = {
-        "cache": True,
-        "n_rands": coefs,
-        "flatten_thresh": 100
-    }
+        N, scale, coefs = test_inst
 
-    random_params = {
-        "iters": 100,
-        "gamma": 3
-    }
+        engine_params = {
+            "cache": True,
+            "n_rands": 100,
+            "flatten_thresh": 100
+        }
 
-    anneal_params = {
-        "schedule": 1000,
-        "gamma": 3,
-        "temp": 10,
-        "base_on_greedy": True
-    }
+        random_params = {
+            "iters": 100,
+            "gamma": 3
+        }
 
-    basin_params = {
-        "basins": 10,
-        "gamma": 3
-    } 
+        anneal_params = {
+            "schedule": 1000,
+            "gamma": 3,
+            "temp": 10,
+            "base_on_greedy": True
+        }
 
-    data = get_eval_data(
-            tests, N, scale, coefs,
-            engine_params, random_params, anneal_params, basin_params
-    )
+        basin_params = {
+            "basins": 10,
+            "gamma": 3
+        } 
 
-    save_data(data, "small.csv")
+        get_eval_data(
+            TESTS, N, scale, coefs,
+            engine_params, random_params, anneal_params, basin_params,
+            save_name="evaluation_"+str(it)+".csv", save_freq=10
+        )
 
 if __name__ == '__main__':
 

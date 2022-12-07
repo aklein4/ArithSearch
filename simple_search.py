@@ -324,8 +324,8 @@ class SimpleSearch:
 
         def plot(a_x=acc_x, a_y=acc_y, r_x=rej_x, r_y=rej_y):
             plt.clf()
-            plt.scatter(r_x, r_y, c='Red')
-            plt.scatter(a_x, a_y, c='Blue')
+            plt.scatter(r_x, r_y, c='k', marker='.', s=1)
+            plt.scatter(a_x, a_y, c='k', marker='x')
             plt.xlabel("Trial")
             plt.ylabel("Cost")
             plt.legend(["Rejected", "Accepted"])
@@ -346,11 +346,15 @@ class SimpleSearch:
             nodes = curr_path.get_nodes()
             if random.random() < 0.5:                
                 weights = np.array([1 if nodes[i].on_child is not None else 0 for i in range(len(nodes))])
+                if np.sum(weights) == 0:
+                    weights += 1
                 breaker_ind = np.random.choice(range(len(nodes)), p=weights/np.sum(weights))
                 breaker = nodes[breaker_ind]
                 breaker.on_child = None
             else:
                 weights = np.array([1 if nodes[i].off_child is not None else 0 for i in range(len(nodes))])
+                if np.sum(weights) == 0:
+                    weights += 1
                 breaker_ind = np.random.choice(range(len(nodes)), p=weights/np.sum(weights))
                 breaker = nodes[breaker_ind]
                 breaker.off_child = None
@@ -414,8 +418,8 @@ class SimpleSearch:
 
         def plot(a_x=acc_x, a_y=acc_y, r_x=rej_x, r_y=rej_y):
             plt.clf()
-            plt.scatter(r_x, r_y, c='Red')
-            plt.scatter(a_x, a_y, c='Blue')
+            plt.scatter(r_x, r_y, c='k', marker='.', s=1)
+            plt.scatter(a_x, a_y, c='k', marker='x')
             plt.xlabel("Trial")
             plt.ylabel("Cost")
             plt.legend(["Rejected", "Accepted"])
@@ -441,11 +445,15 @@ class SimpleSearch:
                 nodes = curr_path.get_nodes()
                 if random.random() < 0.5:                
                     weights = np.array([1 if nodes[i].on_child is not None else 0 for i in range(len(nodes))])
+                    if np.sum(weights) == 0:
+                        weights += 1
                     breaker_ind = np.random.choice(range(len(nodes)), p=weights/np.sum(weights))
                     breaker = nodes[breaker_ind]
                     breaker.on_child = None
                 else:
                     weights = np.array([1 if nodes[i].off_child is not None else 0 for i in range(len(nodes))])
+                    if np.sum(weights) == 0:
+                        weights += 1
                     breaker_ind = np.random.choice(range(len(nodes)), p=weights/np.sum(weights))
                     breaker = nodes[breaker_ind]
                     breaker.off_child = None
@@ -493,8 +501,8 @@ def main(args):
     show_trees = True
 
     # generate some big random polynomial
-    N = 5
-    scale = 1
+    N = 3
+    scale = 3
     coefs = 25
 
     target = SparsePoly(N)
