@@ -18,19 +18,40 @@ def make_clean(poly: SparsePoly):
     return clean
 
 
-def log_cost(k):
-    return np.sum(np.ceil(np.log2(1+np.abs(k))))
+def get_open(p, off):
 
+    this_open = None
 
-def set_to_one(poly: SparsePoly):
-    poly.dict = {}
-    poly.dict[tuple([0 for _ in range(poly.n)])] = 1
+    for d in off.dict.keys():
+        new_set = SparsePoly(p.n)
+
+        for k in p.dict.keys():
+            diff = np.array(k) - np.array(d)
+
+            if np.min(diff) >= 0 and p[k] - off[d] >= 0:
+                new_set[tuple(diff)] = p[k] // off[d]
+        
+        if this_open is None:
+            this_open = new_set
+
+        else:
+            for k in this_open.dict.keys():
+
+                if k not in new_set.dict.keys():
+                    this_open[k] = 0
+                
+                else:
+                    this_open[k] = min(this_open[k], new_set[k])
+
+            this_open.clean()
+
+    return this_open
 
 
 def search(target: SparsePoly, per_iters: int) -> int:
-    
+    n = target.n
+
     groups = []
-    total_cost = 0
 
     groups.append(make_clean(target))
 
@@ -38,85 +59,62 @@ def search(target: SparsePoly, per_iters: int) -> int:
 
         group = groups.pop()
 
-        best_trio = None
+        best_combo = None
         best_cost = None
 
         for it in range(per_iters):
+            print(it)
 
-            g_set = set(group.dict.keys())
-
-            ab = [[], []]
-            ab_sets = [set(), set()]
-
-            first_k = np.random.randint(0, group.max_order()+1)
-            first = np.zeros(group.n, dtype=np.int64)
-            first[random.randrange(group.n)] = first_k
-            for g in group.dict.keys():
-                diff = np.array(g) - first
-                if np.min(diff) >= 0:
-                    ab_sets[0].add(tuple(diff))
-            while len(ab_sets[0]) <= 1 or sum(first) == 0:
-                first = np.random.randint(0, group.max_order()+1, size=(group.n,))
-                ab_sets[0] = set()
-                for g in group.dict.keys():
-                    diff = np.array(g) - first
-                    if np.min(diff) >= 0:
-                        ab_sets[0].add(tuple(diff))
-            ab[0].append(tuple(first))
-
-            second = random.choice(list(ab_sets[0]))
-            ab_sets[0].remove(second)
-            ab[1].append(second)
-            for g in group.dict.keys():
-                diff = np.array(g) - np.array(second)
-                if np.min(diff) >= 0 and tuple(diff) not in ab[0]:
-                    ab_sets[1].add(tuple(diff))
-
-            g_set.remove(tuple([ab[0][0][_]+ab[1][0][_] for _ in range(group.n)]))
-
-            if len(ab_sets[0]) == 0 or len(ab_sets[1]) == 0:
-                continue
-
-            can_grow = [0, 1]
-            while len(can_grow) > 0:
-
-                on = random.choice(can_grow)
-                off = 1 - on
-
-                choice = random.choice(list(ab_sets[off]))
-                ab_sets[off].remove(choice)
-
-                ab[on].append(choice)
-                arr = np.array(choice)
-                new_set = set()
-                for g in group.dict.keys():
-                    diff = np.array(g) - arr
-                    if np.min(diff) >= 0:
-                        new_set.add(tuple(diff))
-
-                ab_sets[off] = ab_sets[off].intersection(new_set)
-                if len(ab_sets[off]) == 0:
-                    can_grow.remove(on)
-
-            a = SparsePoly(group.n)
-            for k in ab[0]:
-                a[k] = 1
-            b = SparsePoly(group.n)
-            for k in ab[1]:
-                b[k] = 1
-
-            c = group - (a*b)
-
-            cost = sum(sum(k) for k in a.dict.keys())**2 + sum(sum(k) for k in b.dict.keys())**2 + sum(sum(k) for k in c.dict.keys())**2
-            if min(c.dict.values()) >= 0 and (best_cost is None or cost < best_cost):
-                best_trio = [a, b, c]
-                best_cost = cost
-        
-        for t in best_trio:
-            print(t, '\n')
-        exit()
+            ab = [SparsePoly(n), SparsePoly(n)]
             
-                
+            a_start = [0 for _ in range(n)]
+            a_start[random.randrange(n)] = 1
+            ab[0][a_start] = 1
+
+            b_set = get_open(target, ab[0])
+            b_choice = random.choice(list(b_set.dict.keys()))
+            ab[1][b_choice] = 1
+
+            open_sets = [get_open(target - ab[0]*ab[1], ab[1]), get_open(target - ab[0]*ab[1], ab[0])]
+            for i in range(len(open_sets)):
+                for d in ab[i].dict.keys():
+                    if d in open_sets[i].dict.keys():
+                        del open_sets[i].dict[d]
+
+            while True:
+
+                can_add = []
+                for i in range(len(open_sets)):
+                    if len(open_sets[i]) > 0:
+                        can_add.append(i)
+
+                if len(can_add) == 0:
+                    break
+
+                add_choice = random.choice(can_add)
+
+                if len(can_add) == 2 and len(ab[add_choice]) > len(ab[1-add_choice]):
+                    add_choice = 1-add_choice
+
+                k_choice = random.choice(list(open_sets[add_choice].dict.keys()))
+                ab[add_choice][k_choice] = 1
+
+                open_sets = [get_open(target - ab[0]*ab[1], ab[1]), get_open(target - ab[0]*ab[1], ab[0])]
+                for i in range(len(open_sets)):
+                    for d in ab[i].dict.keys():
+                        if d in open_sets[i].dict.keys():
+                            del open_sets[i].dict[d]
+
+                # print([str(o) for o in ab])
+                # print([str(o) for o in open_sets])
+                # input("... ")
+
+            if best_combo is None or sum(sum(k) for k in (ab[0]*ab[1]).dict.keys()) > best_cost:
+                best_combo = ab
+                best_cost = sum(sum(k) for k in (ab[0]*ab[1]).dict.keys())
+            
+        return best_combo, best_cost
+
 
 def main():
     target = SparsePoly(3)
@@ -129,24 +127,21 @@ def main():
     t_2[0, 0, 1] = 1
     t_2[1, 0, 1] = 1
     t_2[0, 1, 0] = 1
-    print(target)
-    print(t_2)
-    print("")
     target *= t_2
     target *= target
+    print("")
+
+    ab, cost = search(target, 5)
+
+    print("")
+    print(ab[0], '\n')
+    print(ab[1], '\n')
+    print(ab[0]*ab[1], '\n')
     print(target, '\n')
+    print(target - ab[0]*ab[1])
 
-    search(target, 1000)
-
-    # target = SparsePoly(3)
-    # t_2 = SparsePoly(3)
-    # target[1, 0, 1] = 1
-    # target[1, 1, 0] = 1
-
-    # t_2[2, 0, 0] = 1
-    # t_2[0, 1, 2] = 1
-
-    # print(target*t_2)
+    print("Effective Reduction:")
+    print(cost)
 
 if __name__ == '__main__':
     main()

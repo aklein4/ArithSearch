@@ -49,7 +49,7 @@ def read_data(filename):
                 continue
 
             if header is None:
-                header = [row[i] for i in range(len(row))]
+                header = ["multivar_horner", "Greedy", "Random", "Annealing", "Basin-Hop"]
             
             else:
                 tests.append([int(c) for c in row])
@@ -72,7 +72,6 @@ def read_data(filename):
     newline_header = [header[h].replace(" ", '\n') for h in range(len(header))]
 
     plt.boxplot(tests, vert=True, labels=newline_header, flierprops=dict(marker='x'), meanline=True, meanprops=dict(color='k', linestyle='--'), medianprops=dict(color='k'))
-    # plt.ylim(bottom=0)
     plt.ylabel("Cost")
     plt.xlabel("Search Method")
     plt.title("Distribution of Solution Costs for Different Circuit Generating Methods")
@@ -87,6 +86,83 @@ def read_data(filename):
     plt.tight_layout()
     plt.savefig("winning_percentage.png")
 
+
+def make_tables(file_list):
+
+    n_files = len(file_list)
+
+    plt.rcParams["font.family"] = "serif"
+    fig, ax = plt.subplots(n_files, 1)
+    fig.set_size_inches(8.5, 11)
+    plt.subplots_adjust(top=0.6)
+
+    for f in range(n_files):
+
+        title = None
+        header = None
+        tests = []
+
+        with open(SAVE_FOLDER+file_list[f], newline='') as csvfile:
+            spamreader = csv.reader(csvfile, dialect='excel')
+            for row in spamreader:
+
+                if row[0][0] == '#':
+                    title = ""
+                    for r in row[2:]:
+                        title += ", " + r
+                    title = title[2:]
+                    print("\n ----", title, "----")
+
+                elif header is None:
+                    header = ["multivar_horner", "Greedy", "Random", "Annealing", "Basin-Hopping"]
+                    # header = [row[i].replace(" ", "\n") for i in range(len(row))]
+                
+                else:
+                    tests.append([int(c) for c in row])
+
+            tests = np.stack(tests)
+
+            averages = np.round(np.sum(tests, axis=0) / tests.shape[0], 2)
+            average_colors = ["w" for _ in range(len(header))]
+            average_colors[np.argmin(averages)] = "lightgray"
+            averages = [round(averages[a], 3) for a in range(averages.shape[0])]
+
+            print("Averages:")
+            for h in range(len(header)):
+                print(" -", str(header[h])+":", averages[h])
+
+            wins = np.where(tests <= np.expand_dims(np.min(tests, axis=1), 1), 1, 0)
+            win_percs = np.round(np.sum(wins, axis=0) / wins.shape[0], 2)
+            win_colors = ["w" for _ in range(len(header))]
+            win_colors[np.argmax(win_percs)] = "lightgray"
+            win_percs = [str(round(100*win_percs[a], 3))+"%" for a in range(win_percs.shape[0])]
+
+            print("Winning Percentages:")
+            for h in range(len(header)):
+                print(" -", str(header[h])+":", win_percs[h])
+
+            refs = np.expand_dims(tests[:, 0], 1)
+            avg_reduction_np = np.sum((tests - refs) / refs, axis=0) / tests.shape[0]
+            reduc_colors = ["w" for _ in range(len(header))]
+            reduc_colors[np.argmin(avg_reduction_np)] = "lightgray"
+            avg_reduction = []
+            for i in range(len(header)):
+                avg_reduction.append(str(round(100*avg_reduction_np[i], 2)) + "%")
+
+            print("Reductions:")
+            for h in range(len(header)):
+                print(" -", str(header[h])+":", avg_reduction[h])
+
+            ax[f].table(cellText=[averages, win_percs, avg_reduction],
+                colLabels=header, rowLabels=["Avg Cost", "Win %", "Avg % Change"],
+                loc="center", cellColours=[average_colors, win_colors, reduc_colors]
+            )
+            ax[f].title.set_text(title)
+            ax[f].axis('off')
+
+    plt.suptitle("Performance Comparison of Different Algorithms on Varying Sizes of Polynomials", fontweight='bold')
+    fig.tight_layout()
+    plt.savefig("eval_table.png")
 
 def command_wrap(command):
     outputs = {}
@@ -195,7 +271,7 @@ TESTS = 100
 
 # N, scale, coefs
 TEST_PARAMS = [
-    (10, 3, 100)
+    (3, 3, 25)
 ]
 
 def main():
@@ -232,7 +308,7 @@ def main():
         get_eval_data(
             TESTS, N, scale, coefs,
             engine_params, random_params, anneal_params, basin_params,
-            save_name="evaluation_"+str(it)+".csv", save_freq=10
+            save_name="evaluation_"+str(8)+".csv", save_freq=10
         )
 
 if __name__ == '__main__':
@@ -240,5 +316,8 @@ if __name__ == '__main__':
     if len(sys.argv) == 2:
         read_data(sys.argv[1])
     
+    elif len(sys.argv) > 2:
+        make_tables(sys.argv[1:])
+
     else:
         main()

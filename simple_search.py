@@ -5,21 +5,29 @@ import multivar_horner
 
 import numpy as np
 import torch
-from dataclasses import dataclass, field
-import heapq
 import time
 import random
 import matplotlib.pyplot as plt
 import argparse
 
+
+# Number of trials to decompose monomials
+# Not super important (or maybe it is idk)
 DECOMP_TRIALS = 10
 
 
+# Default number of trials without improving to stop running annealing/basin hopping
 DEFAULT_FLATTEN_THRESH = 100
 
 
 class AnnealNode:
     def __init__(self, common, on_child, off_child, size, added_const=False):
+        """
+        A node in the factorization 'tree', used by SimpleSearch.
+        :param common: The common factor that this node multiplies by (None if this is a leaf node)
+        :param on_child: Pointer to node that results from factoring (None if there is no such)
+        :param off_child: Ponter to node of non-factorable polynomial 
+        """
         self.common = common.clone() if not common is None else None
         self.on_child = on_child
         self.off_child = off_child
@@ -302,10 +310,10 @@ class SimpleSearch:
 
         if save:
             plt.clf()
-            plt.scatter(range(len(c_list)), c_list)
+            plt.scatter(range(len(c_list)), c_list, c='k', marker='.')
             plt.xlabel("Trial")
             plt.ylabel("Cost")
-            plt.title("SimpleSearch with Randomize Trials")
+            plt.title("DivSearch with Randomize Trials")
             plt.savefig("random_out.png")
 
         return best_cost, best_tree
@@ -325,7 +333,7 @@ class SimpleSearch:
         def plot(a_x=acc_x, a_y=acc_y, r_x=rej_x, r_y=rej_y):
             plt.clf()
             plt.scatter(r_x, r_y, c='k', marker='.', s=1)
-            plt.scatter(a_x, a_y, c='k', marker='x')
+            plt.scatter(a_x, a_y, c='k', marker='s')
             plt.xlabel("Trial")
             plt.ylabel("Cost")
             plt.legend(["Rejected", "Accepted"])
@@ -419,7 +427,7 @@ class SimpleSearch:
         def plot(a_x=acc_x, a_y=acc_y, r_x=rej_x, r_y=rej_y):
             plt.clf()
             plt.scatter(r_x, r_y, c='k', marker='.', s=1)
-            plt.scatter(a_x, a_y, c='k', marker='x')
+            plt.scatter(a_x, a_y, c='k', marker='s')
             plt.xlabel("Trial")
             plt.ylabel("Cost")
             plt.legend(["Rejected", "Accepted"])
@@ -502,13 +510,20 @@ def main(args):
 
     # generate some big random polynomial
     N = 3
-    scale = 3
-    coefs = 25
+    scale = 2
+    coefs = 3
 
     target = SparsePoly(N)
-    for c in range(coefs):
-        k = np.round_(np.random.exponential(scale=scale, size=N))
-        target[k] = 1
+    # for c in range(coefs):
+    #     k = np.round_(np.random.exponential(scale=scale, size=N))
+    #     target[k] = 1
+
+    target[0, 1, 0] = 1
+    target[1, 0, 0] = 1
+    target[1, 0, 1] = 1
+    target[2, 1, 1] = 1
+    target[2, 2, 1] = 1
+    target[2, 2, 2] = 1
 
     # the most basic representation just multiplies and adds every monomial one by one
     print("\nNaive Estimate:", sum([1+sum(k) for k in target.dict.keys()]))
@@ -530,21 +545,21 @@ def main(args):
     """ get solution using our method """
     engine = SimpleSearch(target, cache=True, n_rands=100, gpu=args.cuda)
 
-    cost, tree = engine.search()
-    print("\n --> Greedy Cost:", cost)
-    if show_trees: print(tree)
+    # cost, tree = engine.search()
+    # print("\n --> Greedy Cost:", cost)
+    # if show_trees: print(tree)
 
-    cost, tree = engine.randomSearch(1, gamma=None, save=True, verbose=False)
-    print("\n --> Random Cost:", cost)
-    if show_trees: print(tree)
+    # cost, tree = engine.randomSearch(1000, gamma=3, save=True, verbose=True)
+    # print("\n --> Random Cost:", cost)
+    # if show_trees: print(tree)
 
-    cost, tree = engine.annealSearch(1000, 3, 1, base_on_greedy=True, save=True, verbose=False)
+    cost, tree = engine.annealSearch(1000, 1, 1, base_on_greedy=True, save=True, verbose=False)
     print("\n --> Anneal Cost:", cost)
     if show_trees: print(tree)
 
-    cost, tree = engine.basinSearch(5, 3, save=True)
-    print("\n --> Basin Cost:", cost)
-    if show_trees: print(tree)
+    # cost, tree = engine.basinSearch(5, 3, save=True)
+    # print("\n --> Basin Cost:", cost)
+    # if show_trees: print(tree)
 
     print("")
 
