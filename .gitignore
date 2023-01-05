@@ -1,5 +1,9 @@
 
-/__pycache__
-/local_data
+/.vscode
+/.vs
+/out
+/build
+**/__pycache__
+**/local_data
 random_out.png
 anneal_out.png
