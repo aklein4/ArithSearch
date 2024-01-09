@@ -1,5 +1,8 @@
 # ArithSearch
 
+### Overview
+This repo contains many different methods for performing meta-heuristic search to optimize computation graphs. The most complete methods can be found in 
+
 ### TODO:
 
 1. Port sample_search and its wrappers, recursive_search and splitting_search, from c_star.py to C++.
